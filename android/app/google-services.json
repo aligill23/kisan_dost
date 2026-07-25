@@ -1,0 +1,49 @@
+{
+  "project_info": {
+    "project_number": "464069298435",
+    "firebase_url": "https://kisan-dost-abe42-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "kisan-dost-abe42",
+    "storage_bucket": "kisan-dost-abe42.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:464069298435:android:bddce1cba5191e451bc136",
+        "android_client_info": {
+          "package_name": "com.example.kisan_dost"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDb32igsF9ED4eSr8LTM0kIOTinVeh8vUw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:464069298435:android:884d39fb447f83a51bc136",
+        "android_client_info": {
+          "package_name": "com.kisandost.kisan_dost"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDb32igsF9ED4eSr8LTM0kIOTinVeh8vUw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

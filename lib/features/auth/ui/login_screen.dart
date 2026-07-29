@@ -21,7 +21,7 @@ class _LoginScreenState extends State<LoginScreen>
   final _phoneFocus = FocusNode();
   bool _isFocused = false;
 
-  // Wheat particles — same system as splash for visual continuity
+  // Wheat particles -same system as splash for visual continuity
   late final AnimationController _particleCtrl;
   late final List<_Particle> _particles;
 
@@ -97,12 +97,12 @@ class _LoginScreenState extends State<LoginScreen>
     final phone = _phoneController.text.trim();
     debugPrint('📞 Calling checkAndLogin with: $phone');
     final result = await authVM.checkAndLogin(phone);
-    debugPrint('✅ checkAndLogin result: $result');
+    debugPrint(' checkAndLogin result: $result');
     if (!mounted) return;
 
     switch (result) {
       case LoginResult.existingUser:
-        // ✅ Device check add karein — existing account login karte waqt
+        //  Device check add karein -existing account login karte waqt
         final userId = authVM.userId ?? '';
         final deviceResult = await authVM.checkDeviceSecurity(userId);
         if (!mounted) return;
@@ -127,7 +127,7 @@ class _LoginScreenState extends State<LoginScreen>
         context.go('/profile-setup');
         break;
       case LoginResult.noBusinessProfile:
-        // ✅ Yahan bhi add karein — dealer/arhti profile complete hai to bhi check
+        //  Yahan bhi add karein -dealer/arhti profile complete hai to bhi check
         final userId = authVM.userId ?? '';
         final deviceResult = await authVM.checkDeviceSecurity(userId);
         if (!mounted) return;
@@ -145,7 +145,7 @@ class _LoginScreenState extends State<LoginScreen>
         if (context.mounted) context.go('/dashboard');
         break;
 
-      // ✅ NAYA CASE — is device pe pehle se koi doosra account registered hai
+      //  NAYA CASE -is device pe pehle se koi doosra account registered hai
       case LoginResult.deviceAlreadyRegistered:
         if (context.mounted) {
           Navigator.push(
@@ -619,8 +619,9 @@ class _LoginScreenState extends State<LoginScreen>
                               if (val == null || val.isEmpty) {
                                 return 'نمبر درج کریں';
                               }
-                              if (val.length < 10) {
-                                return 'درست نمبر درج کریں';
+                              if (val.length != 11) {
+                                //  Exactly 11 digits
+                                return 'نمبر 11 ہندسوں کا ہونا چاہیے';
                               }
                               if (!val.startsWith('03')) {
                                 return 'نمبر 03 سے شروع ہو';
@@ -746,7 +747,7 @@ class _LoginScreenState extends State<LoginScreen>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Wheat particle system — identical to splash for visual continuity
+// Wheat particle system -identical to splash for visual continuity
 // ─────────────────────────────────────────────────────────────────────────────
 class _Particle {
   final double x;

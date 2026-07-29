@@ -192,7 +192,7 @@ class _SplashScreenState extends State<SplashScreen>
     await Future.delayed(const Duration(seconds: 3));
     if (!mounted) return;
 
-    // ✅ STEP 1 — Force update check (sabse pehle)
+    //  STEP 1 -Force update check (sabse pehle)
     final canProceed = await _checkForceUpdate();
     if (!canProceed) return; // update na ho to aage mat badho
 
@@ -209,7 +209,7 @@ class _SplashScreenState extends State<SplashScreen>
       return;
     }
 
-    // ✅ Device security check
+    //  Device security check
     final authVM = context.read<AuthViewModel>();
     final deviceResult = await authVM.checkDeviceSecurity(userId);
     if (!mounted) return;
@@ -277,7 +277,7 @@ class _SplashScreenState extends State<SplashScreen>
       return true;
     } catch (e) {
       debugPrint('Force update check error: $e');
-      return true; // error ho to normally continue karo — block mat karo
+      return true; // error ho to normally continue karo -block mat karo
     }
   }
 

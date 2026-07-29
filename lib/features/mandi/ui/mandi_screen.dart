@@ -37,7 +37,7 @@ class _MandiScreenState extends State<MandiScreen> {
     _loadUserDistrict();
   }
 
-  // ── BACKEND LOGIC — UNCHANGED ─────────────────────
+  // ── BACKEND LOGIC -UNCHANGED ─────────────────────
   Future<void> _loadUserDistrict() async {
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getString('userId') ?? '';
@@ -74,6 +74,21 @@ class _MandiScreenState extends State<MandiScreen> {
             elevation: 0,
             backgroundColor: AppTheme.darkGreen,
             automaticallyImplyLeading: false,
+            leading: GestureDetector(
+              onTap: () => Navigator.maybePop(context),
+              child: Container(
+                margin: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.arrow_back,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+            ),
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
                 decoration: BoxDecoration(
@@ -675,7 +690,7 @@ class _MarqueeTextState extends State<_MarqueeText>
     height: 1.6,
   );
 
-  // Explicit pixel gap between repeats — plain space characters collapse
+  // Explicit pixel gap between repeats -plain space characters collapse
   // in Urdu/Nastaleeq shaping, so a real SizedBox is used instead of spaces.
   static const double _gapWidth = 60;
   static const double _pixelsPerSecond = 30;
@@ -839,7 +854,7 @@ class _RateCard extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
                   child: Row(
                     children: [
-                      // Left — Price + Trend
+                      // Left -Price + Trend
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -928,7 +943,7 @@ class _RateCard extends StatelessWidget {
 
                       const Spacer(),
 
-                      // Right — Crop info
+                      // Right -Crop info
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [

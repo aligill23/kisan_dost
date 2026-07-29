@@ -407,7 +407,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen>
                       padding: const EdgeInsets.all(16),
                       child: Center(
                         child: Text(
-                          'تمام پروڈکٹس دیکھ لیے ✅',
+                          'تمام پروڈکٹس دیکھ لیے',
                           style: TextStyle(
                             color: Colors.grey.shade400,
                             fontSize: 12,

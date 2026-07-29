@@ -1,9 +1,9 @@
 // lib/features/notifications/viewmodels/notification_viewmodel.dart
 //
 // CHANGES FROM ORIGINAL:
-// 1. Added groupedNotifications getter — powers
+// 1. Added groupedNotifications getter -powers
 //    WhatsApp-style grouped UI
-// 2. Added filterByGroup() — lets UI filter by type
+// 2. Added filterByGroup() -lets UI filter by type
 // 3. Added real-time stream (replaces one-time load)
 // 4. Added unread counts per group
 // 5. Preserved all original methods
@@ -120,9 +120,9 @@ class NotificationViewModel extends ChangeNotifier {
   }
 
   // ── Actions ───────────────────────────────────
-  // PRESERVED from original — same API
+  // PRESERVED from original -same API
   Future<void> loadNotifications() async {
-    // Now handled by stream — kept for compatibility
+    // Now handled by stream -kept for compatibility
     if (_userId.isEmpty) return;
     _subscribeToNotifications();
   }

@@ -89,10 +89,10 @@ class AuthViewModel extends ChangeNotifier {
               : LoginResult.noBusinessProfile; // ← NEW
         }
       } else {
-        // New user — pehle device check karein
+        // New user -pehle device check karein
         final existingUserId = await findAccountUsingThisDevice();
         if (existingUserId != null) {
-          // Is device pe pehle se koi account hai — block karo
+          // Is device pe pehle se koi account hai -block karo
           isLoading = false;
           notifyListeners();
           return LoginResult.deviceAlreadyRegistered; // ← naya enum value
@@ -179,7 +179,7 @@ class AuthViewModel extends ChangeNotifier {
   Future<DeviceCheckResult> checkDeviceSecurity(String userId) async {
     try {
       if (userId.isEmpty) {
-        debugPrint('❌ userId empty — skip check');
+        debugPrint('❌ userId empty -skip check');
         return DeviceCheckResult.newDevice;
       }
 
@@ -191,10 +191,10 @@ class AuthViewModel extends ChangeNotifier {
           .doc(userId)
           .get();
 
-      // ✅ BUG FIX — doc exist nahi to
+      //  BUG FIX -doc exist nahi to
       // register karo, warna skip ho jata tha
       if (!userDoc.exists) {
-        debugPrint('📄 Doc not found — registering');
+        debugPrint('📄 Doc not found -registering');
         await _registerDevice(userId, currentDeviceId);
         return DeviceCheckResult.newDevice;
       }
@@ -208,24 +208,24 @@ class AuthViewModel extends ChangeNotifier {
       debugPrint('Status:     $deviceStatus');
 
       if (deviceStatus == 'reset_pending') {
-        debugPrint('Reset pending — re-register');
+        debugPrint('Reset pending -re-register');
         await _registerDevice(userId, currentDeviceId);
         return DeviceCheckResult.resetPending;
       }
 
       if (registeredDeviceId.isEmpty) {
-        debugPrint('No device — first register');
+        debugPrint('No device -first register');
         await _registerDevice(userId, currentDeviceId);
         return DeviceCheckResult.newDevice;
       }
 
       if (registeredDeviceId == currentDeviceId) {
-        debugPrint('Same device — allowed');
+        debugPrint('Same device -allowed');
         await _updateSession(userId);
         return DeviceCheckResult.allowed;
       }
 
-      debugPrint('Different device — blocked');
+      debugPrint('Different device -blocked');
       return DeviceCheckResult.blockedDifferentDevice;
     } catch (e) {
       debugPrint('Device check error: $e');
@@ -250,7 +250,7 @@ class AuthViewModel extends ChangeNotifier {
       debugPrint('   deviceId: $deviceId');
       debugPrint('   deviceName: $deviceName');
 
-      // ✅ set + merge — update() se replace
+      //  set + merge -update() se replace
       await FirebaseFirestore.instance.collection('users').doc(userId).set(
         {
           'registeredDeviceId': deviceId,
@@ -262,7 +262,7 @@ class AuthViewModel extends ChangeNotifier {
           'registeredAt': FieldValue.serverTimestamp(),
           'lastLoginAt': FieldValue.serverTimestamp(),
         },
-        SetOptions(merge: true), // ✅ MERGE
+        SetOptions(merge: true), //  MERGE
       );
 
       debugPrint('Device registered successfully!');
@@ -285,7 +285,7 @@ class AuthViewModel extends ChangeNotifier {
           'sessionId': sessionId,
           'lastLoginAt': FieldValue.serverTimestamp(),
         },
-        SetOptions(merge: true), // ✅ MERGE
+        SetOptions(merge: true), //  MERGE
       );
 
       final prefs = await SharedPreferences.getInstance();
@@ -320,16 +320,16 @@ class AuthViewModel extends ChangeNotifier {
 
       return localSession == firestoreSession && localSession.isNotEmpty;
     } catch (_) {
-      return true; // Network error — fail open
+      return true; // Network error -fail open
     }
   }
 }
 
 enum DeviceCheckResult {
-  allowed, // Same device ✅
-  newDevice, // First time — register karo ✅
+  allowed, // Same device
+  newDevice, // First time -register karo
   blockedDifferentDevice, // ❌ Different device
-  resetPending, // Admin ne reset kiya ✅ Allow
+  resetPending, // Admin ne reset kiya  Allow
 }
 
 enum LoginResult {

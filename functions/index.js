@@ -7,7 +7,7 @@ const db = admin.firestore();
 const messaging = admin.messaging();
 
 // ─────────────────────────────────────────────────
-// HELPER — Send FCM to a user by userId
+// HELPER -Send FCM to a user by userId
 // ─────────────────────────────────────────────────
 async function sendPushToUser(userId, payload) {
   try {
@@ -100,7 +100,7 @@ async function sendPushToUser(userId, payload) {
 }
 
 // ─────────────────────────────────────────────────
-// HELPER — Save notification to Firestore
+// HELPER -Save notification to Firestore
 // ─────────────────────────────────────────────────
 async function saveNotification(userId, role, data) {
   try {
@@ -123,7 +123,7 @@ async function saveNotification(userId, role, data) {
 }
 
 // ─────────────────────────────────────────────────
-// TRIGGER 1 — NEW ORDER PLACED
+// TRIGGER 1 -NEW ORDER PLACED
 // Fires when order added → notify dealer
 // ─────────────────────────────────────────────────
 exports.onOrderPlaced = functions
@@ -161,7 +161,7 @@ exports.onOrderPlaced = functions
   });
 
 // ─────────────────────────────────────────────────
-// TRIGGER 2 — ORDER COMPLETED → notify farmer
+// TRIGGER 2 -ORDER COMPLETED → notify farmer
 // ─────────────────────────────────────────────────
 exports.onOrderCompleted = functions
   .firestore
@@ -205,7 +205,7 @@ exports.onOrderCompleted = functions
   });
 
 // ─────────────────────────────────────────────────
-// TRIGGER 3 — NEW PRODUCT ADDED
+// TRIGGER 3 -NEW PRODUCT ADDED
 // Fires when dealer adds product → notify farmers
 // ─────────────────────────────────────────────────
 exports.onProductAdded = functions
@@ -229,7 +229,7 @@ exports.onProductAdded = functions
 
     const payload = {
       title: `🛒 نئی مصنوعات دستیاب!`,
-      body: `${dealerName} نے ${productName} شامل کیا — PKR ${price}`,
+      body: `${dealerName} نے ${productName} شامل کیا -PKR ${price}`,
       type: "newCropsAvailable",
       channelId: "products",
       deepLink: "/marketplace",
@@ -272,7 +272,7 @@ exports.onProductAdded = functions
   });
 
 // ─────────────────────────────────────────────────
-// TRIGGER 4 — MANDI RATE UPDATED
+// TRIGGER 4 -MANDI RATE UPDATED
 // Fires when admin updates mandi rate → notify all farmers
 // ─────────────────────────────────────────────────
 exports.onMandiRateUpdated = functions
@@ -304,7 +304,7 @@ exports.onMandiRateUpdated = functions
 
     const payload = {
       title: `${trendEmoji} منڈی ریٹ اپ ڈیٹ`,
-      body: `${cropName} (${district}): PKR ${price} فی من — قیمت ${trendText}`,
+      body: `${cropName} (${district}): PKR ${price} فی من -قیمت ${trendText}`,
       type: "mandiRate",
       channelId: "mandi",
       deepLink: "/mandi",
@@ -379,7 +379,7 @@ exports.onMandiRateUpdated = functions
   });
 
 // ─────────────────────────────────────────────────
-// TRIGGER 5 — NEW CROP POSTED by farmer
+// TRIGGER 5 -NEW CROP POSTED by farmer
 // Fires when crop posted → notify subscribed arhtis
 // ─────────────────────────────────────────────────
 exports.onCropPosted = functions
@@ -404,7 +404,7 @@ exports.onCropPosted = functions
 
     const payload = {
       title: "🌾 نئی فصل دستیاب!",
-      body: `${cropType} — ${quantity} من — ${district} سے — PKR ${price}`,
+      body: `${cropType} -${quantity} من -${district} سے -PKR ${price}`,
       type: "cropListingPosted",
       channelId: "crops",
       deepLink: "/crops",
@@ -448,7 +448,7 @@ exports.onCropPosted = functions
   });
 
 // ─────────────────────────────────────────────────
-// TRIGGER 6 — SUBSCRIPTION APPROVED
+// TRIGGER 6 -SUBSCRIPTION APPROVED
 // Fires when admin approves subscription
 // ─────────────────────────────────────────────────
 exports.onSubscriptionApproved = functions
@@ -487,7 +487,7 @@ exports.onSubscriptionApproved = functions
   });
 
 // ─────────────────────────────────────────────────
-// TRIGGER 7 — NOTIFICATIONS COLLECTION
+// TRIGGER 7 -NOTIFICATIONS COLLECTION
 // Fires when notification added → sends FCM push
 // This is the UNIVERSAL trigger for all manual sends
 // ─────────────────────────────────────────────────

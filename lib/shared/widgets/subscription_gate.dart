@@ -167,7 +167,7 @@ class _SubscriptionRequiredScreen extends StatelessWidget {
               TextButton(
                 onPressed: onRefresh,
                 child: const Text(
-                  'میں نے ادائیگی کر دی ہے — تازہ کریں',
+                  'میں نے ادائیگی کر دی ہے -تازہ کریں',
                   style: TextStyle(
                     fontSize: 14,
                     color: AppTheme.textGrey,

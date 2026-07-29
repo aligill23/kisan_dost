@@ -151,7 +151,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
     }
     final price = int.tryParse(priceText);
     if (price == null || price <= 0) {
-      _showError('قیمت صحیح درج کریں — صفر یا منفی نہیں');
+      _showError('قیمت صحیح درج کریں -صفر یا منفی نہیں');
       return;
     }
     if (price > 1000000) {
@@ -167,7 +167,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
     }
     final stock = int.tryParse(stockText);
     if (stock == null || stock <= 0) {
-      _showError('مقدار صحیح درج کریں — صفر یا منفی نہیں');
+      _showError('مقدار صحیح درج کریں -صفر یا منفی نہیں');
       return;
     }
     if (stock > 100000) {
@@ -193,13 +193,13 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
       await docRef.set({
         'name': _nameController.text.trim(),
-        'price': price, // ✅ Validated int
+        'price': price, //  Validated int
         'category': _selectedCategory,
         'description': _descController.text.trim(),
         'unit': _unitController.text.trim().isEmpty
             ? 'فی بوری'
             : _unitController.text.trim(),
-        'stock': stock, // ✅ Validated int
+        'stock': stock, //  Validated int
         'soldUnits': 0,
         'imageUrl': imageUrl ?? '',
         'dealerId': userId,
@@ -357,7 +357,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
     }
   }
 
-  // ✅ Helper method
+  //  Helper method
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

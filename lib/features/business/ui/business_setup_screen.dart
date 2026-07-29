@@ -12,6 +12,8 @@ import '../../../services/r2_upload_service.dart';
 import '../../../features/auth/viewmodels/auth_viewmodel.dart';
 import '../../../shared/widgets/location_dropdown.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../../features/auth/ui/device_blocked_screen.dart';
+import '../../../features/auth/ui/profile_success_screen.dart';
 
 class BusinessSetupScreen extends StatefulWidget {
   const BusinessSetupScreen({super.key});
@@ -130,6 +132,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
   }
 
   // ── Save Business ─────────────────────────────
+  // ── Save Business ─────────────────────────────
   Future<void> _saveBusiness() async {
     if (!_validate()) return;
 
@@ -142,7 +145,6 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
       final prefs = await SharedPreferences.getInstance();
       final phone = prefs.getString('phoneNumber') ?? '';
 
-      //   FIX — use Firebase Auth uid instead of phone digits
       var authUser = FirebaseAuth.instance.currentUser;
       if (authUser == null) {
         final cred = await FirebaseAuth.instance.signInAnonymously();
@@ -152,6 +154,20 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
 
       if (docId.isEmpty) {
         throw Exception('Unable to resolve user identifier');
+      }
+
+      //  Is device pe pehle se koi doosra account to nahi
+      final authVM = context.read<AuthViewModel>();
+      final existingUserId = await authVM.findAccountUsingThisDevice();
+      if (existingUserId != null && existingUserId != docId) {
+        setState(() => _isLoading = false);
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const DeviceBlockedScreen()),
+          );
+        }
+        return;
       }
 
       // Upload logo
@@ -208,129 +224,37 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
       await prefs.setBool('isLoggedIn', true);
       if (!mounted) return;
 
+      //  Device register/check karein
+      final deviceResult = await authVM.checkDeviceSecurity(docId);
+      if (!mounted) return;
+      if (deviceResult == DeviceCheckResult.blockedDifferentDevice) {
+        setState(() => _isLoading = false);
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const DeviceBlockedScreen()),
+        );
+        return;
+      }
+
+      final prefs2 = await SharedPreferences.getInstance();
+      await prefs2.setString(
+        'userName',
+        _ownerNameController.text.trim(),
+      );
+
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const ProfileSuccessScreen(),
+        ),
+      );
+
       setState(() => _isLoading = false);
-      _showSuccessDialog();
     } catch (e) {
       setState(() => _isLoading = false);
       _showError(e.toString());
     }
-  }
-
-  void _showSuccessDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      barrierColor: Colors.black.withValues(alpha: 0.6),
-      builder: (_) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          padding: const EdgeInsets.all(32),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(28),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 88,
-                height: 88,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: _isDealer
-                        ? [
-                            const Color(0xFF0D3B8E),
-                            const Color(0xFF1565C0),
-                          ]
-                        : [
-                            const Color(0xFF3E2000),
-                            const Color(0xFFE65100),
-                          ],
-                  ),
-                ),
-                child: const Icon(
-                  Icons.check_rounded,
-                  color: Colors.white,
-                  size: 48,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                _isDealer ? 'ڈیلر پیج بن گیا!' : 'آڑھت پیج بن گیا!',
-                style: const TextStyle(
-                  fontFamily: 'Nastaleeq',
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textDark,
-                  height: 1.8,
-                ),
-                textDirection: TextDirection.rtl,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _businessNameController.text.trim(),
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: _isDealer
-                      ? const Color(0xFF1565C0)
-                      : const Color(0xFFE65100),
-                  height: 1.5,
-                ),
-                textDirection: TextDirection.rtl,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: _isDealer
-                        ? [
-                            const Color(0xFF0D3B8E),
-                            const Color(0xFF1565C0),
-                          ]
-                        : [
-                            const Color(0xFF3E2000),
-                            const Color(0xFFE65100),
-                          ],
-                  ),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    context.go('/dashboard');
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    shadowColor: Colors.transparent,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 48,
-                      vertical: 14,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  child: const Text(
-                    'ڈیش بورڈ پر جائیں',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      height: 1.5,
-                    ),
-                    textDirection: TextDirection.rtl,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   // ── Build ─────────────────────────────────────

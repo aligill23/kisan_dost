@@ -145,7 +145,7 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
                         // Notification
                         const NotificationBell(),
 
-                        // Center — Logo + Name
+                        // Center -Logo + Name
                         Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -556,7 +556,7 @@ class _QuickActionCard extends StatelessWidget {
 }
 
 // Crop Feed Card
-// Crop Feed Card — Premium
+// Crop Feed Card -Premium
 class _CropFeedCard extends StatelessWidget {
   final Map<String, dynamic> data;
 
@@ -653,7 +653,7 @@ class _CropFeedCard extends StatelessWidget {
                     },
                   ),
                 ),
-                // Fresh badge — top left
+                // Fresh badge -top left
                 if (isFresh)
                   Positioned(
                     top: 10,
@@ -678,7 +678,7 @@ class _CropFeedCard extends StatelessWidget {
                     ),
                   ),
 
-                // Bookmark — top right (single instance)
+                // Bookmark -top right (single instance)
                 Positioned(
                   top: 10,
                   right: 10,
@@ -697,7 +697,7 @@ class _CropFeedCard extends StatelessWidget {
                   ),
                 ),
 
-                // Price + quantity glass chips — bottom of image
+                // Price + quantity glass chips -bottom of image
                 Positioned(
                   bottom: 10,
                   right: 12,

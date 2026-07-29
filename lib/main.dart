@@ -24,7 +24,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  // Notification already saved to Firestore by the sender — nothing needed here.
+  // Notification already saved to Firestore by the sender -nothing needed here.
   debugPrint('[BG] ${message.data}');
 }
 
@@ -68,12 +68,12 @@ void main() async {
     // NOTE: initialize() already wires up FirebaseMessaging.onMessage
     // (foreground overlay popup) and onMessageOpenedApp / getInitialMessage
     // (background/terminated tap -> deep link) internally. Do NOT add a
-    // second onMessage.listen here — it would fire the popup twice.
+    // second onMessage.listen here -it would fire the popup twice.
     await NotificationService.initialize();
 
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-    //   Local notification channels (Android) — needed so foreground
+    //   Local notification channels (Android) -needed so foreground
     // messages (which FCM does NOT auto-display) show up with the right
     // sound/importance per category.
     await _setupNotificationChannels();
@@ -221,7 +221,7 @@ class _RouterAppState extends State<_RouterApp> {
     // `navigatorKey` used for the foreground overlay popup and for
     // deep-link navigation on notification tap. AppRouter.createRouter
     // must construct GoRouter with that SAME key
-    // (GoRouter(navigatorKey: navigatorKey, routes: ...)) — otherwise
+    // (GoRouter(navigatorKey: navigatorKey, routes: ...)) -otherwise
     // navigatorKey.currentState / currentContext will be null and
     // popups + deep links will silently no-op. Make sure that's wired
     // up inside app_router.dart.

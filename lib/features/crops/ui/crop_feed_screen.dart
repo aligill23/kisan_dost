@@ -577,7 +577,7 @@ class _PremiumCropCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 12),
 
-                      // Price — BIG
+                      // Price -BIG
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [

@@ -24,7 +24,6 @@ class _GuidesScreenState extends State<GuidesScreen> {
     'چارہ',
   ];
 
-  // ── Full guide data ─────────────────────────────────────────────────────
   static const List<Map<String, dynamic>> _guides = [
     {
       'title': 'گندم',

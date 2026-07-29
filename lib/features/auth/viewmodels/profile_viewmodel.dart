@@ -36,7 +36,7 @@ class ProfileViewModel extends ChangeNotifier {
     var user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
-      // Auth session abhi tak ready nahi — abhi sign in karo
+      // Auth session abhi tak ready nahi -abhi sign in karo
       final cred = await FirebaseAuth.instance.signInAnonymously();
       user = cred.user;
     }
@@ -103,7 +103,7 @@ class ProfileViewModel extends ChangeNotifier {
         'referredBy': _validatedAmbassadorId,
       });
     } catch (_) {
-      // Non-critical — profile already saved
+      // Non-critical -profile already saved
     }
   }
 
@@ -170,7 +170,7 @@ class ProfileViewModel extends ChangeNotifier {
   // ── Profile Image Upload ──────────────────────
   // lib/features/auth/viewmodels/profile_viewmodel.dart
 
-// ✅ New method — URL return karta hai
+//  New method -URL return karta hai
 // (existing uploadProfileImage() alag hai
 //  jo directly Firestore save karta hai)
 
@@ -229,7 +229,7 @@ class ProfileViewModel extends ChangeNotifier {
 
       await prefs.setString('userId', docId);
       await prefs.setBool('isLoggedIn', true);
-      // ✅ Cache the display name locally so screens that need it
+      //  Cache the display name locally so screens that need it
       // (greetings, headers, etc.) don't have to wait on a Firestore read
       await prefs.setString('userName', data['name'] ?? '');
 

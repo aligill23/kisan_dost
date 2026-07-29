@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../ui/device_blocked_screen.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
   const ProfileSetupScreen({super.key});
@@ -117,6 +118,20 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
     final role = context.read<AuthViewModel>().userRole ?? 'farmer';
     final vm = context.read<ProfileViewModel>();
+    final authVM = context.read<AuthViewModel>();
+
+    //  NAYA -is device pe pehle se koi doosra account to nahi
+    final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final existingUserId = await authVM.findAccountUsingThisDevice();
+    if (existingUserId != null && existingUserId != currentUid) {
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const DeviceBlockedScreen()),
+        );
+      }
+      return;
+    }
 
     // ── Referral validation ───────────────────────
     final code = _referralController.text.trim();
@@ -146,7 +161,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     }
 
     // ── Profile Image Upload ──────────────────────
-    // ✅ YE MISSING THA — Ab add ho gaya
+    //  YE MISSING THA -Ab add ho gaya
     String profileImageUrl = '';
     if (_profileImage != null) {
       _showLoadingDialog('تصویر اپلوڈ ہو رہی ہے...');
@@ -170,7 +185,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       'district': _district,
       'tehsil': _tehsil,
       'notes': _notesController.text.trim(),
-      // ✅ Profile image URL add karo
+      //  Profile image URL add karo
       if (profileImageUrl.isNotEmpty) 'profileImage': profileImageUrl,
     };
 
@@ -189,6 +204,21 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     if (!mounted) return;
 
     if (success) {
+      //  NAYA -profile save hote hi device register/check karein
+      final authVM = context.read<AuthViewModel>();
+      final userId = authVM.userId ?? '';
+      final deviceResult = await authVM.checkDeviceSecurity(userId);
+      if (!mounted) return;
+
+      if (deviceResult == DeviceCheckResult.blockedDifferentDevice) {
+        // Is device pe pehle se koi account hai -block karo, profile-success mat dikhao
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const DeviceBlockedScreen()),
+        );
+        return;
+      }
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const ProfileSuccessScreen()),
@@ -357,6 +387,21 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             expandedHeight: 140,
             pinned: true,
             automaticallyImplyLeading: false,
+            leading: GestureDetector(
+              onTap: () => Navigator.maybePop(context),
+              child: Container(
+                margin: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.arrow_back,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+            ),
             backgroundColor: AppTheme.primaryGreen,
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
@@ -717,7 +762,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                                           textDirection: TextDirection.rtl,
                                         ),
                                         Text(
-                                          'اختیاری — صرف کسانوں کیلئے',
+                                          'اختیاری -صرف کسانوں کیلئے',
                                           style: TextStyle(
                                             fontSize: 11,
                                             color: Colors.grey.shade500,
@@ -839,7 +884,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                                         horizontal: 16,
                                         vertical: 18,
                                       ),
-                                      // Suffix — check / error only (loading dialog covers the spinner state)
+                                      // Suffix -check / error only (loading dialog covers the spinner state)
                                       suffixIcon: vm.referralValid
                                           ? const Icon(
                                               Icons.check_circle_rounded,
@@ -894,7 +939,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                                                       TextDirection.rtl,
                                                 ),
                                                 Text(
-                                                  'ریفرل کوڈ کامیابی سے استعمال ہوا — ${vm.validatedAmbassadorName ?? ''} کا شکریہ',
+                                                  'ریفرل کوڈ کامیابی سے استعمال ہوا -${vm.validatedAmbassadorName ?? ''} کا شکریہ',
                                                   style: TextStyle(
                                                     fontSize: 12,
                                                     color: Colors.grey.shade600,

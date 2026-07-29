@@ -26,7 +26,7 @@ android {
 
     buildTypes {
         release {
-            //   Pehle debug signing — keystore
+            //   Pehle debug signing -keystore
             // banane ke baad change karna
             signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = true

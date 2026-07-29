@@ -61,7 +61,7 @@ class AppRouter {
           path: '/dashboard',
           builder: (_, __) => const MainNavigation(),
         ),
-        // In app_router.dart — confirm this route exists:
+        // In app_router.dart -confirm this route exists:
         GoRoute(
           path: '/notifications',
           builder: (_, __) => ChangeNotifierProvider(
@@ -77,7 +77,7 @@ class AppRouter {
         ),
       ],
 
-      //   Simple redirect — NO async
+      //   Simple redirect -NO async
       redirect: (context, state) {
         final location = state.matchedLocation;
         // Let everything through

@@ -1,22 +1,22 @@
 // lib/models/notification_model.dart
 //
 // DESIGN DECISIONS:
-// 1. Added NotificationType enum — adding new types
+// 1. Added NotificationType enum -adding new types
 //    requires only 1 line here + 1 in service
-// 2. Added deepLink field — enables tap navigation
+// 2. Added deepLink field -enables tap navigation
 //    to any screen without hardcoding routes
-// 3. Added groupKey — enables WhatsApp-style grouping
+// 3. Added groupKey -enables WhatsApp-style grouping
 //    (e.g., all order notifications group together)
-// 4. Added metadata map — flexible extra data per type
+// 4. Added metadata map -flexible extra data per type
 //    (e.g., order ID, crop name, price) without
 //    changing model schema for every new type
-// 5. Added priority — controls popup visibility
+// 5. Added priority -controls popup visibility
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 // ── Notification Types ────────────────────────────
-// Add new types here — zero other changes needed
+// Add new types here -zero other changes needed
 // unless you want custom icon/color
 enum NotificationType {
   // Mandi

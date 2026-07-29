@@ -11,7 +11,7 @@ class DeviceService {
   static final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
 
   // ── Get unique device fingerprint ─────────────
-  // Combination of hardware IDs — hard to fake
+  // Combination of hardware IDs -hard to fake
   static Future<String> getDeviceFingerprint() async {
     try {
       if (Platform.isAndroid) {

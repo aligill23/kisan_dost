@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 void openOfficialPDF() {
-  // Placeholder — PDF integration will be connected later.
-  debugPrint('[Kisan Dost] openOfficialPDF() called — PDF not yet connected.');
+  // Placeholder -PDF integration will be connected later.
+  debugPrint('[Kisan Dost] openOfficialPDF() called -PDF not yet connected.');
 }
 
 class OfficialPdfCard extends StatelessWidget {

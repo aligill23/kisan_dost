@@ -1,15 +1,15 @@
 // lib/services/notification_service.dart
 //
 // DESIGN DECISIONS:
-// 1. Deduplication via 'dedupeKey' field — prevents
+// 1. Deduplication via 'dedupeKey' field -prevents
 //    same notification firing twice (race conditions)
 // 2. Overlay controller is a static GlobalKey —
 //    allows showing popups from anywhere without context
 // 3. sendNotification() is the ONLY entry point —
 //    all callers use same method regardless of type
-// 4. FCM push is best-effort — Firestore write always
+// 4. FCM push is best-effort -Firestore write always
 //    succeeds first, push is secondary
-// 5. Foreground overlay uses OverlayEntry — no
+// 5. Foreground overlay uses OverlayEntry -no
 //    package dependency, pure Flutter
 
 import 'dart:async';
@@ -199,7 +199,7 @@ class NotificationService {
             .get();
 
         if (existing.docs.isNotEmpty) {
-          // Duplicate — skip silently
+          // Duplicate -skip silently
           return;
         }
       }
@@ -227,7 +227,7 @@ class NotificationService {
       });
 
       // ── FCM Push ─────────────────────────────
-      // Best-effort — failure doesn't lose notification
+      // Best-effort -failure doesn't lose notification
       await _sendFcmToUser(
         userId: userId,
         title: title,
@@ -238,7 +238,7 @@ class NotificationService {
         metadata: metadata,
       );
     } catch (e) {
-      // Log but don't rethrow — notification
+      // Log but don't rethrow -notification
       // may have been saved to Firestore already
       debugPrint('[NotificationService] Error: $e');
     }

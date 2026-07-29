@@ -299,7 +299,7 @@ class CropDetailScreen extends StatelessWidget {
                             ),
                             const SizedBox(height: 10),
                             _ContactActionButton(
-                              label: 'کال کریں — $phone',
+                              label: 'کال کریں -$phone',
                               icon: Icons.call,
                               color: AppTheme.primaryGreen,
                               onTap: () async {

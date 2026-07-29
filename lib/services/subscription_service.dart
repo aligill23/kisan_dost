@@ -7,7 +7,7 @@ class SubscriptionService {
 
   static Future<bool> isSubscriptionActive() async {
     try {
-      //   Use Firebase Auth UID — matches security rules
+      //   Use Firebase Auth UID -matches security rules
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null || uid.isEmpty) return false;
 

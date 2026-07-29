@@ -96,8 +96,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final vm = context.read<ProfileViewModel>();
     final user = vm.currentUser;
 
-    //   CRITICAL FIX — Get role from SharedPreferences
-    // Never trust user?.role — it might be null!
+    //   CRITICAL FIX -Get role from SharedPreferences
+    // Never trust user?.role -it might be null!
     final prefs = await SharedPreferences.getInstance();
     final role = prefs.getString('userRole') ?? user?.role ?? '';
 
@@ -116,7 +116,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     final Map<String, dynamic> data = {
       'name': _nameController.text.trim(),
-      'role': role, // ← Now safe — from SharedPrefs
+      'role': role, // ← Now safe -from SharedPrefs
       'province': _province,
       'district': _district,
       'tehsil': _tehsil,

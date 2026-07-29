@@ -1210,7 +1210,7 @@ class _ArhtiCropCard extends StatelessWidget {
                 ),
               ),
 
-              // Right — Real Crop Image
+              // Right -Real Crop Image
               ClipRRect(
                 borderRadius: const BorderRadius.only(
                   topRight: Radius.circular(20),
@@ -1466,7 +1466,7 @@ class _ActiveSubscriptionCard extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Left — Icon
+          // Left -Icon
           Container(
             width: 52,
             height: 52,
@@ -1481,7 +1481,7 @@ class _ActiveSubscriptionCard extends StatelessWidget {
             ),
           ),
 
-          // Right — Info
+          // Right -Info
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [

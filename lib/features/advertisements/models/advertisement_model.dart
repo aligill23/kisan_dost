@@ -4,6 +4,8 @@ class AdvertisementModel {
   final String id;
   final String companyName;
   final String bannerImage;
+  final String mediaType; // 'image' | 'video'
+  final String videoUrl; // Cloudflare R2 video URL
   final String headline;
   final String buttonText;
   final String redirectType;
@@ -20,6 +22,8 @@ class AdvertisementModel {
     required this.id,
     required this.companyName,
     required this.bannerImage,
+    required this.mediaType,
+    required this.videoUrl,
     required this.headline,
     required this.buttonText,
     required this.redirectType,
@@ -38,6 +42,8 @@ class AdvertisementModel {
       id: id,
       companyName: data['companyName'] ?? '',
       bannerImage: data['bannerImage'] ?? '',
+      mediaType: data['mediaType'] ?? 'image',
+      videoUrl: data['videoUrl'] ?? '',
       headline: data['headline'] ?? '',
       buttonText: data['buttonText'] ?? 'مزید دیکھیں',
       redirectType: data['redirectType'] ?? 'products',
@@ -56,6 +62,8 @@ class AdvertisementModel {
   Map<String, dynamic> toMap() => {
         'companyName': companyName,
         'bannerImage': bannerImage,
+        'mediaType': mediaType,
+        'videoUrl': videoUrl,
         'headline': headline,
         'buttonText': buttonText,
         'redirectType': redirectType,

@@ -204,7 +204,7 @@ class _DealerDashboardState extends State<DealerDashboard> {
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          // Premium Header — Blue for Dealer
+          // Premium Header -Blue for Dealer
           SliverAppBar(
             pinned: true,
             expandedHeight: 100,

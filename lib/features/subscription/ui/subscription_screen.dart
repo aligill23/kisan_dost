@@ -351,8 +351,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               ),
               const SizedBox(height: 12),
               _PaymentCard(
-                name: 'Allied Bank',
-                number: '021876659834 Wajahat Ali',
+                name: 'Allied Bank and Mashriq Bank',
+                number: 'Coming Soon',
                 color: const Color(0xFF1565C0),
                 icon: Icons.account_balance_rounded,
                 onCopy: () => _copyToClipboard('021876659834'),

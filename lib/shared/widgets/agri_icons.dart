@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class AgriIcons {
-  // Mandi Rates — Premium Chart with wheat
+  // Mandi Rates -Premium Chart with wheat
   static Widget mandiRates(
       {double size = 48, Color color = const Color(0xFFE65100)}) {
     return SizedBox(
@@ -13,7 +13,7 @@ class AgriIcons {
     );
   }
 
-  // Crop Guide — Premium Book
+  // Crop Guide -Premium Book
   static Widget cropGuide(
       {double size = 48, Color color = const Color(0xFF1565C0)}) {
     return SizedBox(
@@ -25,7 +25,7 @@ class AgriIcons {
     );
   }
 
-  // Post Crop — Wheat + Upload
+  // Post Crop -Wheat + Upload
   static Widget postCrop(
       {double size = 48, Color color = const Color(0xFF2E7D32)}) {
     return SizedBox(
@@ -37,7 +37,7 @@ class AgriIcons {
     );
   }
 
-  // My Crops — Harvest Records
+  // My Crops -Harvest Records
   static Widget myCrops(
       {double size = 48, Color color = const Color(0xFF00695C)}) {
     return SizedBox(
@@ -49,7 +49,7 @@ class AgriIcons {
     );
   }
 
-  // Marketplace — Fertilizer Bag
+  // Marketplace -Fertilizer Bag
   static Widget marketplace(
       {double size = 48, Color color = const Color(0xFF6A1B9A)}) {
     return SizedBox(
@@ -62,7 +62,7 @@ class AgriIcons {
   }
 }
 
-// Mandi Rates Painter — Bar chart with trend arrow
+// Mandi Rates Painter -Bar chart with trend arrow
 class _MandiIconPainter extends CustomPainter {
   final Color color;
   _MandiIconPainter({required this.color});
@@ -111,7 +111,7 @@ class _MandiIconPainter extends CustomPainter {
       paint,
     );
 
-    // Bar 3 — tallest
+    // Bar 3 -tallest
     paint.color = color;
     canvas.drawRRect(
       RRect.fromRectAndRadius(
@@ -156,7 +156,7 @@ class _MandiIconPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-// Crop Guide Painter — Open book with leaf
+// Crop Guide Painter -Open book with leaf
 class _GuideIconPainter extends CustomPainter {
   final Color color;
   _GuideIconPainter({required this.color});
@@ -244,7 +244,7 @@ class _GuideIconPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-// Post Crop Painter — Wheat stalk + upload arrow
+// Post Crop Painter -Wheat stalk + upload arrow
 class _PostCropIconPainter extends CustomPainter {
   final Color color;
   _PostCropIconPainter({required this.color});
@@ -333,7 +333,7 @@ class _PostCropIconPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-// My Crops Painter — Clipboard with crop rows
+// My Crops Painter -Clipboard with crop rows
 class _MyCropsIconPainter extends CustomPainter {
   final Color color;
   _MyCropsIconPainter({required this.color});
@@ -384,7 +384,7 @@ class _MyCropsIconPainter extends CustomPainter {
       paint,
     );
 
-    // Row 1 — wheat icon + line
+    // Row 1 -wheat icon + line
     strokePaint.color = color;
     strokePaint.strokeWidth = 1.5;
     canvas.drawLine(
@@ -421,7 +421,7 @@ class _MyCropsIconPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-// Marketplace Painter — Premium fertilizer bag
+// Marketplace Painter -Premium fertilizer bag
 class _MarketplaceIconPainter extends CustomPainter {
   final Color color;
   _MarketplaceIconPainter({required this.color});

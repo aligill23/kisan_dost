@@ -104,7 +104,7 @@ class _NotificationBellState extends State<NotificationBell>
         child: child,
       ),
       child: GestureDetector(
-        //   GoRouter — works with your setup
+        //   GoRouter -works with your setup
         onTap: () => context.push('/notifications'),
         child: Container(
           width: 42,

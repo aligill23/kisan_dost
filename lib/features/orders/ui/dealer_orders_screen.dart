@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/rendering.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:printing/printing.dart'; //
-import 'package:pdf/pdf.dart'; //
-import 'package:pdf/widgets.dart' as pw; //
+import 'package:printing/printing.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import '../../../core/theme/app_theme.dart';
 import '/services/notification_service.dart';
 import 'package:kisan_dost/models/notification_model.dart';
-import 'package:flutter/services.dart';
+import 'dart:async';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 class DealerOrdersScreen extends StatefulWidget {
   const DealerOrdersScreen({super.key});
@@ -401,7 +404,7 @@ class _DealerOrderCard extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              '  آرڈر مکمل — اسٹاک اپ ڈیٹ ہو گیا',
+              '  آرڈر مکمل - اسٹاک اپ ڈیٹ ہو گیا',
               textDirection: TextDirection.rtl,
             ),
             backgroundColor: Colors.green,
@@ -500,250 +503,93 @@ class _DealerOrderCard extends StatelessWidget {
     }
   }
 
-  // ── Print / Save PDF ──────────────────────────
-  // ✅ FIXED: loads the Urdu font (JameelNoriNastleeq) before building the PDF
-  // and uses it for every Urdu text run, with RTL text direction throughout.
+  // ── Print / Save PDF (image-based, correct Nastaliq shaping) ──
   Future<void> _printOrder(BuildContext context) async {
-    // ✅ Load the Urdu font — must match the asset path in pubspec.yaml
-    final fontData = await rootBundle.load(
-      'assets/fonts/JameelNoriNastleeq.TTF',
-    );
-    final urduFont = pw.Font.ttf(fontData);
+    try {
+      final captured = await _captureReceiptImage(context);
 
-    final pdf = pw.Document();
+      final pdf = pw.Document();
+      final image = pw.MemoryImage(captured.bytes);
 
-    final totalPrice = data['totalPrice'] ?? 0;
-    final unitPrice = data['productPrice'] ?? 0;
-    final qty = data['quantity'] ?? '';
-    final qtyNum = data['quantityNum'] ?? 0;
-    final calculatedTotal = totalPrice > 0 ? totalPrice : unitPrice;
-
-    // ✅ Urdu text style helper
-    pw.TextStyle urduStyle({
-      double fontSize = 12,
-      pw.FontWeight fontWeight = pw.FontWeight.normal,
-      PdfColor color = PdfColors.black,
-    }) {
-      return pw.TextStyle(
-        font: urduFont,
-        fontSize: fontSize,
-        fontWeight: fontWeight,
-        color: color,
+      // Size the PDF page to match the receipt's own aspect ratio, so the
+      // image fills the whole page instead of shrinking inside A5 with
+      // blank margins (that letterboxing was making the text look smaller).
+      const targetWidthPt = 380.0; // ~ A5 width in points, tweak as needed
+      final aspect = captured.height / captured.width;
+      final pageFormat = PdfPageFormat(
+        targetWidthPt,
+        targetWidthPt * aspect,
+        marginAll: 0,
       );
+
+      pdf.addPage(
+        pw.Page(
+          pageFormat: pageFormat,
+          margin: pw.EdgeInsets.zero,
+          build: (_) => pw.Image(image, fit: pw.BoxFit.fill),
+        ),
+      );
+
+      await Printing.layoutPdf(
+        onLayout: (format) async => pdf.save(),
+        name: 'KisanDost_Order_$id.pdf',
+      );
+    } catch (e) {
+      debugPrint('Print error: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text('پرنٹ میں خرابی: $e', textDirection: TextDirection.rtl),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
-
-    pdf.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a5,
-        margin: const pw.EdgeInsets.all(24),
-        // ✅ RTL direction for the whole page
-        textDirection: pw.TextDirection.rtl,
-        build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              // Header
-              pw.Container(
-                width: double.infinity,
-                padding: const pw.EdgeInsets.all(16),
-                decoration: pw.BoxDecoration(
-                  color: const PdfColor(0.05, 0.24, 0.54),
-                  borderRadius:
-                      const pw.BorderRadius.all(pw.Radius.circular(8)),
-                ),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.center,
-                  children: [
-                    pw.Text(
-                      'کسان دوست',
-                      style: urduStyle(
-                        fontSize: 22,
-                        fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.white,
-                      ),
-                    ),
-                    pw.SizedBox(height: 4),
-                    pw.Text(
-                      'آرڈر رسید',
-                      style: urduStyle(
-                        fontSize: 13,
-                        color: PdfColors.white,
-                      ),
-                    ),
-                    pw.SizedBox(height: 4),
-                    pw.Text(
-                      'KisanDost Tech — Pakpattan',
-                      style: pw.TextStyle(
-                        fontSize: 10,
-                        color: PdfColors.white,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              pw.SizedBox(height: 20),
-
-              // Order Details
-              pw.Text(
-                'آرڈر کی تفصیل',
-                style: urduStyle(
-                  fontSize: 13,
-                  fontWeight: pw.FontWeight.bold,
-                  color: const PdfColor(0.4, 0.4, 0.4),
-                ),
-              ),
-              pw.SizedBox(height: 8),
-              pw.Divider(),
-              pw.SizedBox(height: 8),
-
-              _urduRow('پروڈکٹ', data['productName'] ?? '', urduFont),
-              _urduRow('قسم', data['productCategory'] ?? '—', urduFont),
-              _urduRow('فی یونٹ قیمت', 'PKR $unitPrice', urduFont),
-              _urduRow('مقدار', qty.toString(), urduFont),
-              if (qtyNum > 0) _urduRow('یونٹس', qtyNum.toString(), urduFont),
-
-              pw.SizedBox(height: 8),
-              pw.Divider(),
-              pw.SizedBox(height: 8),
-
-              // Buyer Details
-              pw.Text(
-                'خریدار کی معلومات',
-                style: urduStyle(
-                  fontSize: 13,
-                  fontWeight: pw.FontWeight.bold,
-                  color: const PdfColor(0.4, 0.4, 0.4),
-                ),
-              ),
-              pw.SizedBox(height: 8),
-
-              _urduRow('نام', data['buyerName'] ?? '', urduFont),
-              _urduRow('موبائل', data['buyerPhone'] ?? '', urduFont),
-              _urduRow('ضلع', data['buyerDistrict'] ?? '', urduFont),
-              _urduRow('تحصیل', data['buyerTehsil'] ?? '', urduFont),
-              if ((data['address'] ?? '').isNotEmpty)
-                _urduRow('پتہ', data['address'], urduFont),
-              if ((data['notes'] ?? '').isNotEmpty)
-                _urduRow('نوٹس', data['notes'], urduFont),
-
-              pw.SizedBox(height: 8),
-              pw.Divider(),
-              pw.SizedBox(height: 8),
-
-              // Dealer Details
-              pw.Text(
-                'ڈیلر کی معلومات',
-                style: urduStyle(
-                  fontSize: 13,
-                  fontWeight: pw.FontWeight.bold,
-                  color: const PdfColor(0.4, 0.4, 0.4),
-                ),
-              ),
-              pw.SizedBox(height: 8),
-
-              _urduRow('ڈیلر نام', data['dealerName'] ?? '', urduFont),
-              _urduRow('دکان', data['dealerShop'] ?? '—', urduFont),
-
-              pw.SizedBox(height: 20),
-
-              // Total Box
-              pw.Container(
-                width: double.infinity,
-                padding: const pw.EdgeInsets.all(16),
-                decoration: pw.BoxDecoration(
-                  color: const PdfColor(0.18, 0.49, 0.12),
-                  borderRadius:
-                      const pw.BorderRadius.all(pw.Radius.circular(8)),
-                ),
-                child: pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Text(
-                      'PKR $calculatedTotal',
-                      style: pw.TextStyle(
-                        fontSize: 22,
-                        fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.white,
-                      ),
-                    ),
-                    pw.Text(
-                      'کل رقم',
-                      style: urduStyle(
-                        fontSize: 16,
-                        fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.white,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              pw.SizedBox(height: 16),
-
-              // Footer
-              pw.Center(
-                child: pw.Text(
-                  'شکریہ — کسان دوست',
-                  style: urduStyle(
-                    fontSize: 11,
-                    color: const PdfColor(0.5, 0.5, 0.5),
-                  ),
-                ),
-              ),
-              pw.SizedBox(height: 4),
-              pw.Center(
-                child: pw.Text(
-                  'kisandost.com | Pakpattan, Punjab',
-                  style: pw.TextStyle(
-                    fontSize: 9,
-                    color: const PdfColor(0.6, 0.6, 0.6),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-
-    await Printing.layoutPdf(
-      onLayout: (format) async => pdf.save(),
-      name: 'KisanDost_${data['productName'] ?? 'Receipt'}.pdf',
-    );
   }
 
-  // ✅ Updated row helper — takes the loaded Urdu font so labels/values render
-  pw.Widget _urduRow(String label, String value, pw.Font urduFont) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.only(bottom: 7),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          // Value — left side
-          pw.Expanded(
-            child: pw.Text(
-              value.isEmpty ? '—' : value,
-              style: pw.TextStyle(
-                font: urduFont,
-                fontSize: 11,
-              ),
-              textDirection: pw.TextDirection.rtl,
+  // Renders the receipt off-screen with Flutter's own text engine (correct
+  // Nastaliq shaping) and captures it as a PNG to embed in the PDF, along
+  // with its pixel dimensions so the PDF page can match its aspect ratio.
+  Future<({Uint8List bytes, double width, double height})> _captureReceiptImage(
+      BuildContext context) async {
+    final repaintKey = GlobalKey();
+    final overlay = Overlay.of(context, rootOverlay: true);
+    late OverlayEntry entry;
+
+    entry = OverlayEntry(
+      builder: (_) => Positioned(
+        left: -10000, // keep it off-screen but still laid out & painted
+        top: 0,
+        child: Material(
+          color: Colors.white,
+          child: RepaintBoundary(
+            key: repaintKey,
+            child: SizedBox(
+              width: 560,
+              child: _ReceiptContent(data: data, orderId: id),
             ),
           ),
-          pw.SizedBox(width: 12),
-          // Label — right side
-          pw.Text(
-            '$label:',
-            style: pw.TextStyle(
-              font: urduFont,
-              fontSize: 11,
-              fontWeight: pw.FontWeight.bold,
-              color: const PdfColor(0.4, 0.4, 0.4),
-            ),
-            textDirection: pw.TextDirection.rtl,
-          ),
-        ],
+        ),
       ),
+    );
+
+    overlay.insert(entry);
+
+    // Let it lay out and paint at least one full frame before capturing.
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    final boundary =
+        repaintKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+    final uiImage = await boundary.toImage(pixelRatio: 3.0);
+    final byteData = await uiImage.toByteData(format: ui.ImageByteFormat.png);
+
+    entry.remove();
+
+    return (
+      bytes: byteData!.buffer.asUint8List(),
+      width: uiImage.width.toDouble(),
+      height: uiImage.height.toDouble(),
     );
   }
 
@@ -1185,7 +1031,7 @@ class _InfoRow extends StatelessWidget {
       children: [
         Expanded(
           child: Text(
-            value.isEmpty ? '—' : value,
+            value.isEmpty ? '-' : value,
             style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w500,
@@ -1218,4 +1064,168 @@ class _InfoRow extends StatelessWidget {
       ],
     );
   }
+}
+
+// ── Receipt Content (rendered off-screen, captured to image for PDF) ──
+class _ReceiptContent extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final String orderId;
+
+  const _ReceiptContent({required this.data, required this.orderId});
+
+  String _s(dynamic v) =>
+      (v == null || v.toString().trim().isEmpty) ? '-' : v.toString().trim();
+
+  @override
+  Widget build(BuildContext context) {
+    final totalPrice = data['totalPrice'] ?? 0;
+    final unitPrice = data['productPrice'] ?? 0;
+    final qty = data['quantity'] ?? '';
+    final qtyNum = data['quantityNum'] ?? 0;
+    final calculatedTotal = totalPrice > 0 ? totalPrice : unitPrice;
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                children: [
+                  const Text('کسان دوست',
+                      style: TextStyle(
+                          fontFamily: 'Noto',
+                          fontSize: 34,
+                          color: Colors.white,
+                          height: 1.8)),
+                  const SizedBox(height: 4),
+                  const Text('آرڈر رسید',
+                      style: TextStyle(
+                          fontFamily: 'Noto',
+                          fontSize: 20,
+                          color: Colors.white,
+                          height: 1.6)),
+                  const SizedBox(height: 4),
+                  const Text('KISSANDOST.PK',
+                      style: TextStyle(fontSize: 14, color: Colors.white)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            _sectionTitle('آرڈر کی تفصیل'),
+            const Divider(color: Colors.black),
+            _row('پروڈکٹ', _s(data['productName'])),
+            _row('قسم', _s(data['productCategory'])),
+            _row('فی یونٹ قیمت', 'PKR $unitPrice'),
+            _row('مقدار', qty.toString()),
+            if (qtyNum > 0) _row('یونٹس', qtyNum.toString()),
+            const SizedBox(height: 8),
+            _sectionTitle('خریدار کی معلومات'),
+            const Divider(color: Colors.black),
+            _row('نام', _s(data['buyerName'])),
+            _row('موبائل', _s(data['buyerPhone'])),
+            _row('ضلع', _s(data['buyerDistrict'])),
+            _row('تحصیل', _s(data['buyerTehsil'])),
+            if (_s(data['address']) != '-') _row('پتہ', _s(data['address'])),
+            if (_s(data['notes']) != '-') _row('نوٹس', _s(data['notes'])),
+            const SizedBox(height: 8),
+            _sectionTitle('ڈیلر کی معلومات'),
+            const Divider(color: Colors.black),
+            _row('ڈیلر نام', _s(data['dealerName'])),
+            _row('دکان', _s(data['dealerShop'])),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                  color: Colors.black, borderRadius: BorderRadius.circular(8)),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('PKR $calculatedTotal',
+                      style: const TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white)),
+                  const Text('کل رقم',
+                      style: TextStyle(
+                          fontFamily: 'Noto',
+                          fontSize: 26,
+                          color: Colors.white,
+                          height: 1.8)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Center(
+              child: Text('شکریہ - کسان دوست',
+                  style: TextStyle(
+                      fontFamily: 'Noto',
+                      fontSize: 18,
+                      color: Colors.black,
+                      height: 1.6)),
+            ),
+            const SizedBox(height: 4),
+            const Center(
+              child: Text('KISSANDOST.PK',
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold)),
+            ),
+            const Center(
+              child: Text('Pakpattan, Punjab, Pakistan',
+                  style: TextStyle(fontSize: 13, color: Colors.black)),
+            ),
+            const Center(
+              child: Text('support@kissandost.pk',
+                  style: TextStyle(fontSize: 13, color: Colors.black)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionTitle(String title) => Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Text(title,
+            style: const TextStyle(
+                fontFamily: 'Noto',
+                fontSize: 21,
+                fontWeight: FontWeight.bold,
+                color: Colors.black)),
+      );
+
+  Widget _row(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(value,
+                  style: const TextStyle(
+                      fontFamily: 'Noto',
+                      fontSize: 18,
+                      color: Colors.black,
+                      height: 1.6),
+                  textAlign: TextAlign.left),
+            ),
+            const SizedBox(width: 12),
+            Text('$label:',
+                style: const TextStyle(
+                    fontFamily: 'Noto',
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                    height: 1.6)),
+          ],
+        ),
+      );
 }

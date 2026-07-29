@@ -5,7 +5,7 @@ class AdvertisementRepository {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   static const String _collection = 'advertisements';
 
-  /// Fetch active ads for today — max 3
+  /// Fetch active ads for today -max 3
   Future<List<AdvertisementModel>> getActiveAds() async {
     try {
       final now = DateTime.now();
@@ -27,7 +27,7 @@ class AdvertisementRepository {
     }
   }
 
-  /// Increment views — called once per session
+  /// Increment views -called once per session
   Future<void> incrementViews(String adId) async {
     try {
       await _db.collection(_collection).doc(adId).update({
@@ -45,7 +45,7 @@ class AdvertisementRepository {
     } catch (_) {}
   }
 
-  /// Admin — get all ads
+  /// Admin -get all ads
   Future<List<AdvertisementModel>> getAllAds() async {
     try {
       final snap = await _db
@@ -60,7 +60,7 @@ class AdvertisementRepository {
     }
   }
 
-  /// Admin — create ad
+  /// Admin -create ad
   Future<bool> createAd(Map<String, dynamic> data) async {
     try {
       await _db.collection(_collection).add({
@@ -75,7 +75,7 @@ class AdvertisementRepository {
     }
   }
 
-  /// Admin — update ad
+  /// Admin -update ad
   Future<bool> updateAd(String id, Map<String, dynamic> data) async {
     try {
       await _db.collection(_collection).doc(id).update(data);
@@ -85,7 +85,7 @@ class AdvertisementRepository {
     }
   }
 
-  /// Admin — delete ad
+  /// Admin -delete ad
   Future<bool> deleteAd(String id) async {
     try {
       await _db.collection(_collection).doc(id).delete();
@@ -95,7 +95,7 @@ class AdvertisementRepository {
     }
   }
 
-  /// Admin — toggle active
+  /// Admin -toggle active
   Future<void> toggleActive(String id, bool current) async {
     await _db.collection(_collection).doc(id).update({'isActive': !current});
   }

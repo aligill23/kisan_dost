@@ -49,6 +49,12 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
       'route': 'marketplace',
     },
     {
+      'title': 'زرعی بکنگ',
+      'image': 'assets/images/booking.png',
+      'route': 'agri_booking',
+      'disabled': true,
+    },
+    {
       'title': 'آڑھتی تلاش کریں',
       'image': 'assets/images/find_arhti.png',
       'route': 'find_arhti',
@@ -72,6 +78,9 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
 
   void _onActionTap(String route) {
     switch (route) {
+      case 'agri_booking':
+        // Feature not active yet — do nothing.
+        break;
       case 'mandi':
         Navigator.push(
             context, MaterialPageRoute(builder: (_) => const MandiScreen()));
@@ -310,10 +319,14 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
                     itemCount: _quickActions.length,
                     itemBuilder: (context, index) {
                       final action = _quickActions[index];
+                      final isDisabled = action['disabled'] == true;
                       return _QuickActionCard(
                         title: action['title'] as String,
                         imagePath: action['image'] as String,
-                        onTap: () => _onActionTap(action['route'] as String),
+                        disabled: isDisabled,
+                        onTap: isDisabled
+                            ? null
+                            : () => _onActionTap(action['route'] as String),
                       );
                     },
                   ),
@@ -478,79 +491,132 @@ class _HeaderButton extends StatelessWidget {
   }
 }
 
-// Quick Action Card
+/// Quick Action Card
 class _QuickActionCard extends StatelessWidget {
   final String title;
   final String imagePath;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final bool disabled;
 
   const _QuickActionCard({
     required this.title,
     required this.imagePath,
     required this.onTap,
+    this.disabled = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final content = Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const SizedBox(height: 10),
+        Image.asset(
+          imagePath,
+          width: 52,
+          height: 52,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: AppTheme.primaryGreen.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.grass,
+              color: AppTheme.primaryGreen,
+              size: 28,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textDark,
+              height: 1.4,
+            ),
+            textDirection: TextDirection.rtl,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+          ),
+        ),
+        if (disabled) ...[
+          const SizedBox(height: 2),
+          const Text(
+            'جلد آرہا ہے',
+            style: TextStyle(
+              fontSize: 8.5,
+              fontWeight: FontWeight.w500,
+              color: AppTheme.textGrey,
+              height: 1.3,
+            ),
+            textDirection: TextDirection.rtl,
+            textAlign: TextAlign.center,
+          ),
+        ],
+        const SizedBox(height: 10),
+      ],
+    );
+
+    final card = Container(
+      width: 86,
+      margin: const EdgeInsets.only(right: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: disabled ? Opacity(opacity: 0.5, child: content) : content,
+    );
+
+    if (disabled) {
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          IgnorePointer(child: card),
+          Positioned(
+            top: 4,
+            right: 4,
+            child: Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.15),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.lock_rounded,
+                size: 12,
+                color: AppTheme.textGrey,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        width: 86,
-        margin: const EdgeInsets.only(right: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 12,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const SizedBox(height: 10),
-            Image.asset(
-              imagePath,
-              width: 52,
-              height: 52,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryGreen.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.grass,
-                  color: AppTheme.primaryGreen,
-                  size: 28,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textDark,
-                  height: 1.4,
-                ),
-                textDirection: TextDirection.rtl,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-              ),
-            ),
-            const SizedBox(height: 10),
-          ],
-        ),
-      ),
+      child: card,
     );
   }
 }

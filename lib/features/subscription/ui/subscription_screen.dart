@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
-import '../../../services/r2_upload_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io';
 import '../../../core/theme/app_theme.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../../../services/r2_upload_service.dart';
 
 class SubscriptionScreen extends StatefulWidget {
   const SubscriptionScreen({super.key});
@@ -15,747 +16,895 @@ class SubscriptionScreen extends StatefulWidget {
 }
 
 class _SubscriptionScreenState extends State<SubscriptionScreen> {
-  String _selectedPlan = '';
-  final _txnController = TextEditingController();
+  // ── State ─────────────────────────────────────
+  bool _isLoading = true;
+  bool _isSubmitting = false;
+  String _userId = '';
+
+  // Existing subscription
+  String _subStatus = ''; // '', pending, active, rejected
+  String _subDocId = '';
+  DateTime? _subExpiry;
+  DateTime? _subCreatedAt;
+
+  // Form
+  final _txCtrl = TextEditingController();
   File? _receiptFile;
-  bool _isLoading = false;
-  bool _submitted = false;
-  final ImagePicker _picker = ImagePicker();
+  double _uploadProgress = 0;
+  final _picker = ImagePicker();
+
+  // ── Payment method selection ───────────────────
+  // 'jazzcash' | 'easypaisa' | 'bank'
+  String _selectedMethod = 'jazzcash';
+
+  static const String _jazzCashNumber = '03266621834';
+  static const String _easyPaisaNumber = '03266621834';
+  static const String _bankAccountNumber = '0020105778240018';
+  static const String _bankName = 'Allied Bank';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
 
   @override
   void dispose() {
-    _txnController.dispose();
+    _txCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _pickReceipt() async {
-    final XFile? picked = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 75,
-    );
-    if (picked != null) {
-      setState(() => _receiptFile = File(picked.path));
-    }
-  }
-
-  Future<void> _submitRequest() async {
-    if (_selectedPlan.isEmpty) {
-      _showError('براہ کرم پلان منتخب کریں');
-      return;
-    }
-    if (_receiptFile == null && _txnController.text.trim().isEmpty) {
-      _showError('Transaction ID یا رسید ضروری ہے');
-      return;
-    }
-
+  // ── Load existing subscription ────────────────
+  Future<void> _loadData() async {
     setState(() => _isLoading = true);
 
     try {
-      String? receiptUrl;
-
+      final uid = FirebaseAuth.instance.currentUser?.uid;
       final prefs = await SharedPreferences.getInstance();
-      final phone = prefs.getString('phoneNumber') ?? '';
-      final userId = prefs.getString('userId') ?? '';
-      debugPrint('DEBUG phone: $phone');
-      debugPrint('DEBUG userId: $userId');
+      _userId = uid ?? prefs.getString('userId') ?? '';
 
-      if (_receiptFile != null) {
-        receiptUrl = await R2UploadService.uploadReceipt(
-          _receiptFile!,
-          onProgress: (p) {
-            setState(() {});
-          },
-        );
+      if (_userId.isEmpty) {
+        setState(() => _isLoading = false);
+        return;
       }
 
+      // ✅ Check existing subscription
+      final query = await FirebaseFirestore.instance
+          .collection('subscriptions')
+          .where('userId', isEqualTo: _userId)
+          .orderBy('createdAt', descending: true)
+          .limit(1)
+          .get();
+
+      if (query.docs.isNotEmpty) {
+        final data = query.docs.first.data();
+        final status = data['status'] ?? '';
+        _subDocId = query.docs.first.id;
+        _subStatus = status;
+
+        // Parse expiry
+        final expStr = data['subscriptionExpiryDate'] ?? '';
+        if (expStr.isNotEmpty) {
+          try {
+            _subExpiry = DateTime.parse(expStr);
+          } catch (_) {}
+        }
+
+        // Parse createdAt
+        final cat = data['createdAt'];
+        if (cat != null) {
+          _subCreatedAt = (cat as Timestamp).toDate();
+        }
+      }
+    } catch (e) {
+      debugPrint('Load subscription error: $e');
+    }
+
+    setState(() => _isLoading = false);
+  }
+
+  // ── Submit new subscription ───────────────────
+  Future<void> _submit() async {
+    if (_txCtrl.text.trim().isEmpty) {
+      _showError('ٹرانزیکشن ID درج کریں');
+      return;
+    }
+
+    // ✅ Double check — koi pending/active nahi
+    if (_subStatus == 'pending' || _subStatus == 'active') {
+      _showError('آپ کی سبسکرپشن پہلے سے موجود ہے');
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final phone = prefs.getString('phoneNumber') ?? '';
+
+      // Upload receipt if selected
+      String receiptUrl = '';
+      if (_receiptFile != null) {
+        setState(() => _uploadProgress = 0);
+        final url = await R2UploadService.uploadImage(
+          file: _receiptFile!,
+          folder: 'receipts',
+          onProgress: (p) => setState(() => _uploadProgress = p),
+        );
+        receiptUrl = url ?? '';
+      }
+
+      // ✅ Create ONE subscription document
       await FirebaseFirestore.instance.collection('subscriptions').add({
-        'userId': userId,
+        'userId': _userId,
         'phone': phone,
-        'plan': _selectedPlan,
-        'transactionId': _txnController.text.trim(),
-        'receiptUrl': receiptUrl ?? '',
+        'transactionId': _txCtrl.text.trim(),
+        'receiptUrl': receiptUrl,
+        'paymentMethod': _selectedMethod,
+        'plan': 'standard',
         'status': 'pending',
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      setState(() {
-        _isLoading = false;
-        _submitted = true;
-      });
+      // Reload data
+      await _loadData();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              '✅ درخواست بھیج دی گئی — ایڈمن منظور کرے گا',
+              textDirection: TextDirection.rtl,
+            ),
+            backgroundColor: AppTheme.primaryGreen,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+      }
     } catch (e) {
-      setState(() => _isLoading = false);
       _showError(e.toString());
     }
+
+    setState(() => _isSubmitting = false);
   }
 
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(msg, textDirection: TextDirection.rtl),
-        backgroundColor: Colors.red,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
-  }
-
-  void _copyToClipboard(String text) {
-    Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text(
-          'کاپی ہو گیا',
+        content: Text(
+          msg,
           textDirection: TextDirection.rtl,
         ),
-        backgroundColor: AppTheme.primaryGreen,
-        duration: const Duration(seconds: 1),
+        backgroundColor: Colors.red,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_submitted) return _SuccessScreen();
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8F7),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFF7F8F7),
-        elevation: 0,
-        title: const Text(
-          'سبسکرپشن پلان',
-          style: TextStyle(
-            fontSize: 20,
-            height: 1.5,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.textDark,
-          ),
-          textDirection: TextDirection.rtl,
-        ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Header
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF1B5E20), Color(0xFF2E7D32)],
+      backgroundColor: const Color(0xFFF5F6FA),
+      body: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          // ── Header ──────────────────────────
+          SliverAppBar(
+            expandedHeight: 120,
+            pinned: true,
+            backgroundColor: const Color(0xFF6A1B9A),
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () => Navigator.pop(context),
+            ),
+            flexibleSpace: FlexibleSpaceBar(
+              background: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Color(0xFF4A0080),
+                      Color(0xFF6A1B9A),
+                    ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF1B5E20).withValues(alpha: 0.3),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
                 ),
-                child: Column(
-                  children: [
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.3),
-                          width: 1.5,
+                child: SafeArea(
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.workspace_premium,
+                          color: Colors.amber,
+                          size: 32,
                         ),
-                      ),
-                      child: const Icon(
-                        Icons.workspace_premium_rounded,
-                        color: Colors.white,
-                        size: 32,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    const Text(
-                      'سبسکرپشن پلان',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        height: 1.5,
-                      ),
-                      textDirection: TextDirection.rtl,
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'خریداروں اور کسانوں تک بہتر رسائی حاصل کریں',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.white.withValues(alpha: 0.88),
-                        height: 1.6,
-                      ),
-                      textDirection: TextDirection.rtl,
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Who Needs Subscription
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: AppTheme.primaryGreen.withValues(alpha: 0.18),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.03),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    const Text(
-                      'یہ سبسکرپشن کن کیلئے ضروری ہے؟',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.textDark,
-                        height: 1.5,
-                      ),
-                      textDirection: TextDirection.rtl,
-                    ),
-                    const SizedBox(height: 14),
-                    _roleRow(Icons.storefront_rounded, 'آڑھتی / کمپنی',
-                        const Color(0xFFD08700)),
-                    const SizedBox(height: 10),
-                    _roleRow(Icons.science_outlined, 'سپرے اور کھاد ڈیلر',
-                        const Color(0xFF6A1B9A)),
-                    const SizedBox(height: 12),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryGreen.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Text(
-                            'کسانوں کیلئے مفت ہے',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: AppTheme.primaryGreen,
-                              fontWeight: FontWeight.bold,
-                              height: 1.5,
-                            ),
-                            textDirection: TextDirection.rtl,
+                        const SizedBox(height: 6),
+                        const Text(
+                          'سبسکرپشن',
+                          style: TextStyle(
+                            fontFamily: 'Nastaleeq',
+                            fontSize: 22,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            height: 1.8,
                           ),
-                          SizedBox(width: 8),
-                          Icon(Icons.eco_rounded,
-                              color: AppTheme.primaryGreen, size: 18),
-                        ],
-                      ),
+                          textDirection: TextDirection.rtl,
+                        ),
+                        Text(
+                          'ماہانہ PKR 2,000',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.white.withValues(alpha: 0.8),
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 28),
+            ),
+          ),
 
-              // Plan Selection Title
-              _SectionTitle(
-                icon: Icons.fact_check_outlined,
-                text: 'پلان منتخب کریں',
+          // ── Content ─────────────────────────
+          SliverToBoxAdapter(
+            child: _isLoading
+                ? const Padding(
+                    padding: EdgeInsets.all(60),
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF6A1B9A),
+                      ),
+                    ),
+                  )
+                : Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: _buildContent(),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    // ── ACTIVE ──────────────────────────────────
+    if (_subStatus == 'active') {
+      return _StatusCard(
+        icon: Icons.verified,
+        iconColor: AppTheme.primaryGreen,
+        bgColor: AppTheme.primaryGreen.withValues(alpha: 0.06),
+        borderColor: AppTheme.primaryGreen.withValues(alpha: 0.3),
+        title: 'سبسکرپشن فعال ہے! ✅',
+        subtitle: _subExpiry != null
+            ? 'میعاد: ${_subExpiry!.day}/${_subExpiry!.month}/${_subExpiry!.year}'
+            : 'آپ کی سبسکرپشن فعال ہے',
+        statusLabel: 'فعال',
+        statusColor: AppTheme.primaryGreen,
+        extra: Column(
+          children: [
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryGreen.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
               ),
-              const SizedBox(height: 14),
-
-              // Standard Plan
-              _PlanCard(
-                title: 'Standard Plan',
-                icon: Icons.verified_rounded,
-                price: '2000',
-                priceUnit: 'روپے / ماہ',
-                features: const [
-                  'فصلوں تک رسائی',
-                  'کسان رابطہ معلومات',
-                  'مارکیٹ پلیس رسائی',
-                  'آرڈر وصول کریں',
-                  'ضلع بھر میں نمائش',
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.check_circle,
+                    color: AppTheme.primaryGreen,
+                    size: 16,
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    'تمام سہولیات دستیاب ہیں',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppTheme.primaryGreen,
+                      fontWeight: FontWeight.bold,
+                      height: 1.5,
+                    ),
+                    textDirection: TextDirection.rtl,
+                  ),
                 ],
-                isSelected: _selectedPlan == 'standard',
-                isFeatured: false,
-                color: AppTheme.primaryGreen,
-                onTap: () => setState(() => _selectedPlan = 'standard'),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // ── PENDING ──────────────────────────────────
+    if (_subStatus == 'pending') {
+      return _StatusCard(
+        icon: Icons.hourglass_top,
+        iconColor: Colors.orange,
+        bgColor: Colors.orange.withValues(alpha: 0.06),
+        borderColor: Colors.orange.withValues(alpha: 0.3),
+        title: 'درخواست زیر غور ہے',
+        subtitle: _subCreatedAt != null
+            ? 'بھیجی گئی: ${_subCreatedAt!.day}/${_subCreatedAt!.month}/${_subCreatedAt!.year}'
+            : 'آپ کی درخواست موصول ہو گئی',
+        statusLabel: 'زیر التواء',
+        statusColor: Colors.orange,
+        extra: Column(
+          children: [
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Column(
+                children: [
+                  Text(
+                    'ایڈمن آپ کی درخواست چیک کر رہا ہے',
+                    style: TextStyle(
+                      fontFamily: 'Nastaleeq',
+                      fontSize: 14,
+                      color: Colors.orange,
+                      height: 1.8,
+                    ),
+                    textDirection: TextDirection.rtl,
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    '24-48 گھنٹوں میں منظور ہو جائے گی',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.orange,
+                      height: 1.5,
+                    ),
+                    textDirection: TextDirection.rtl,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // ── REJECTED — Show form again ────────────────
+    // ── NO SUBSCRIPTION or REJECTED — Show Form ──
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Rejected notice
+        if (_subStatus == 'rejected')
+          Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.red.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Colors.red.withValues(alpha: 0.3),
+              ),
+            ),
+            child: const Column(
+              children: [
+                Icon(
+                  Icons.cancel_outlined,
+                  color: Colors.red,
+                  size: 32,
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'پچھلی درخواست مسترد ہوئی',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red,
+                    height: 1.5,
+                  ),
+                  textDirection: TextDirection.rtl,
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'نئی ادائیگی کر کے دوبارہ درخواست دیں',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.red,
+                    height: 1.5,
+                  ),
+                  textDirection: TextDirection.rtl,
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+
+        // ── Payment Method Card (matches reference UI) ──
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 12,
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              const Text(
+                'ادائیگی کریں',
+                style: TextStyle(
+                  fontFamily: 'Nastaleeq',
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textDark,
+                  height: 1.8,
+                ),
+                textDirection: TextDirection.rtl,
               ),
               const SizedBox(height: 16),
 
-              // Featured Plan
-              _PlanCard(
-                title: 'Featured Boost Plan',
-                icon: Icons.auto_awesome_rounded,
-                price: '5000',
-                priceUnit: 'روپے / ماہ',
-                features: const [
-                  'Standard کی تمام سہولیات',
-                  'لسٹنگ کو نمایاں کریں',
-                  'ترجیحی نمائش',
-                  'ہوم پیج پر نمایاں جگہ',
-                  'زیادہ آرڈرز کے امکانات',
-                  'Featured Seller Badge',
-                ],
-                isSelected: _selectedPlan == 'featured',
-                isFeatured: true,
-                color: const Color(0xFF6A1B9A),
-                onTap: () => setState(() => _selectedPlan = 'featured'),
+              // JazzCash
+              _PaymentMethodTile(
+                title: 'JazzCash',
+                number: _jazzCashNumber,
+                iconBg: const Color(0xFFE8272E),
+                iconWidget: const Text(
+                  'JC',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+                selected: _selectedMethod == 'jazzcash',
+                onTap: () => setState(() => _selectedMethod = 'jazzcash'),
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 10),
 
-              // Payment Methods
-              _SectionTitle(
-                icon: Icons.credit_card_rounded,
-                text: 'ادائیگی کا طریقہ',
+              // EasyPaisa
+              _PaymentMethodTile(
+                title: 'EasyPaisa',
+                number: _easyPaisaNumber,
+                iconBg: const Color(0xFF1BA146),
+                iconWidget: const Icon(
+                  Icons.account_balance_wallet,
+                  color: Colors.white,
+                  size: 18,
+                ),
+                selected: _selectedMethod == 'easypaisa',
+                onTap: () => setState(() => _selectedMethod = 'easypaisa'),
+              ),
+              const SizedBox(height: 10),
+
+              // Bank Transfer
+              _PaymentMethodTile(
+                title: 'بینک ٹرانسفر',
+                subtitle: _bankName,
+                number: _bankAccountNumber,
+                iconBg: const Color(0xFF6A1B9A),
+                iconWidget: const Icon(
+                  Icons.account_balance,
+                  color: Colors.white,
+                  size: 18,
+                ),
+                selected: _selectedMethod == 'bank',
+                onTap: () => setState(() => _selectedMethod = 'bank'),
               ),
               const SizedBox(height: 14),
 
-              _PaymentCard(
-                name: 'EasyPaisa',
-                number: '0326-6621834 Wajahat Ali',
-                color: const Color(0xFF00A651),
-                icon: Icons.smartphone_rounded,
-                onCopy: () => _copyToClipboard('03266621834'),
-              ),
-              const SizedBox(height: 12),
-              _PaymentCard(
-                name: 'JazzCash',
-                number: '0326-6621834 Wajahat Ali',
-                color: const Color(0xFFE63946),
-                icon: Icons.smartphone_rounded,
-                onCopy: () => _copyToClipboard('03266621834'),
-              ),
-              const SizedBox(height: 12),
-              _PaymentCard(
-                name: 'Allied Bank and Mashriq Bank',
-                number: 'Coming Soon',
-                color: const Color(0xFF1565C0),
-                icon: Icons.account_balance_rounded,
-                onCopy: () => _copyToClipboard('021876659834'),
-              ),
-              const SizedBox(height: 28),
-
-              // Instructions
+              // Amount row
               Container(
-                padding: const EdgeInsets.all(18),
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
+                  color: const Color(0xFFF8FAF8),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppTheme.borderLight),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: const [
+                    Text(
+                      'PKR 2,000',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                    Text(
+                      'رقم',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: AppTheme.textGrey,
+                        height: 1.4,
+                      ),
+                      textDirection: TextDirection.rtl,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // ── Form Card ─────────────────────────
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 12,
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              const Text(
+                'ادائیگی کی تصدیق',
+                style: TextStyle(
+                  fontFamily: 'Nastaleeq',
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textDark,
+                  height: 1.8,
+                ),
+                textDirection: TextDirection.rtl,
+              ),
+              const SizedBox(height: 16),
+
+              // Transaction ID
+              const Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  'ٹرانزیکشن ID *',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textDark,
+                    height: 1.5,
+                  ),
+                  textDirection: TextDirection.rtl,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _txCtrl,
+                textAlign: TextAlign.right,
+                textDirection: TextDirection.rtl,
+                style: const TextStyle(fontSize: 15),
+                decoration: InputDecoration(
+                  hintText: 'مثال: TXN123456789',
+                  hintTextDirection: TextDirection.rtl,
+                  hintStyle: const TextStyle(
+                    color: AppTheme.textGrey,
+                    fontSize: 14,
+                  ),
+                  prefixIcon: const Icon(
+                    Icons.receipt_outlined,
+                    color: Color(0xFF6A1B9A),
+                    size: 20,
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFFF8FAF8),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: AppTheme.borderLight),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: AppTheme.borderLight),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(
+                      color: Color(0xFF6A1B9A),
+                      width: 1.5,
+                    ),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Receipt upload
+              const Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  'رسید کی تصویر (اختیاری)',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textDark,
+                    height: 1.5,
+                  ),
+                  textDirection: TextDirection.rtl,
+                ),
+              ),
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: () async {
+                  final picked = await _picker.pickImage(
+                    source: ImageSource.gallery,
+                  );
+                  if (picked != null) {
+                    setState(() => _receiptFile = File(picked.path));
+                  }
+                },
+                child: Container(
+                  height: 110,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6A1B9A).withValues(alpha: 0.04),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _receiptFile != null
+                          ? const Color(0xFF6A1B9A)
+                          : AppTheme.borderLight,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: _receiptFile != null
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(13),
+                          child: Image.file(
+                            _receiptFile!,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                          ),
+                        )
+                      : const Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.add_photo_alternate_outlined,
+                              color: Color(0xFF6A1B9A),
+                              size: 32,
+                            ),
+                            SizedBox(height: 6),
+                            Text(
+                              'رسید کی تصویر شامل کریں',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: AppTheme.textGrey,
+                                height: 1.5,
+                              ),
+                              textDirection: TextDirection.rtl,
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // ── Submit Button ──────────────────────
+        _isSubmitting
+            ? Column(
+                children: [
+                  LinearProgressIndicator(
+                    value: _uploadProgress > 0 ? _uploadProgress : null,
+                    color: const Color(0xFF6A1B9A),
+                    backgroundColor: Colors.grey.shade200,
+                    minHeight: 4,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'درخواست بھیجی جا رہی ہے...',
+                    style: TextStyle(
+                      color: AppTheme.textGrey,
+                      fontSize: 13,
+                      height: 1.5,
+                    ),
+                    textDirection: TextDirection.rtl,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              )
+            : Container(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFF4A0080),
+                      Color(0xFF6A1B9A),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
+                      color: const Color(0xFF6A1B9A).withValues(alpha: 0.4),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
                   ],
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        const Text(
-                          'ادائیگی کی ہدایات',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textDark,
-                            height: 1.5,
-                          ),
-                          textDirection: TextDirection.rtl,
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color:
-                                AppTheme.primaryGreen.withValues(alpha: 0.12),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.checklist_rounded,
-                            color: AppTheme.primaryGreen,
-                            size: 16,
-                          ),
-                        ),
-                      ],
+                child: ElevatedButton.icon(
+                  onPressed: _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    const SizedBox(height: 16),
-                    _stepRow('1', 'اپنی پسند کا پلان منتخب کریں'),
-                    _stepRow('2',
-                        'EasyPaisa، JazzCash یا Mashreq Bank سے ادائیگی کریں'),
-                    _stepRow('3', 'Transaction ID درج کریں یا رسید اپلوڈ کریں'),
-                    _stepRow(
-                        '4', 'ہماری ٹیم تصدیق کے بعد سبسکرپشن فعال کرے گی'),
-                    _stepRow('5', 'تصدیق مکمل ہونے پر آپ کو اطلاع دی جائے گی',
-                        isLast: true),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 28),
-
-              // Receipt Upload
-              _SectionTitle(
-                icon: Icons.receipt_long_outlined,
-                text: 'ادائیگی کا ثبوت',
-              ),
-              const SizedBox(height: 12),
-              GestureDetector(
-                onTap: _pickReceipt,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
-                  height: 150,
-                  decoration: BoxDecoration(
+                  ),
+                  icon: const Icon(
+                    Icons.send_outlined,
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: _receiptFile != null
-                          ? AppTheme.primaryGreen
-                          : AppTheme.borderLight,
-                      width: 2,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: (_receiptFile != null
-                                ? AppTheme.primaryGreen
-                                : Colors.black)
-                            .withValues(alpha: 0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
+                    size: 20,
                   ),
-                  child: _receiptFile != null
-                      ? Stack(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(16),
-                              child: Image.file(
-                                _receiptFile!,
-                                fit: BoxFit.cover,
-                                width: double.infinity,
-                                height: double.infinity,
-                              ),
-                            ),
-                            Positioned(
-                              top: 8,
-                              left: 8,
-                              child: Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: const BoxDecoration(
-                                  color: AppTheme.primaryGreen,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.check_rounded,
-                                  color: Colors.white,
-                                  size: 16,
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
-                      : Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryGreen
-                                    .withValues(alpha: 0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                Icons.cloud_upload_outlined,
-                                size: 30,
-                                color: AppTheme.primaryGreen
-                                    .withValues(alpha: 0.8),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            const Text(
-                              'Transaction Screenshot Upload کریں',
-                              style: TextStyle(
-                                fontSize: 15,
-                                color: AppTheme.textGrey,
-                                height: 1.5,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              textDirection: TextDirection.rtl,
-                            ),
-                            const SizedBox(height: 2),
-                            const Text(
-                              'JPG • PNG • PDF',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: AppTheme.textGrey,
-                                height: 1.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Transaction ID
-              _SectionTitle(
-                icon: Icons.tag_rounded,
-                text: 'Transaction ID',
-                size: 16,
-              ),
-              const SizedBox(height: 10),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppTheme.borderLight),
-                ),
-                child: TextFormField(
-                  controller: _txnController,
-                  textAlign: TextAlign.right,
-                  textDirection: TextDirection.rtl,
-                  style: const TextStyle(fontSize: 16),
-                  decoration: InputDecoration(
-                    hintText: 'Transaction ID درج کریں',
-                    hintTextDirection: TextDirection.rtl,
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 16,
+                  label: const Text(
+                    'درخواست بھیجیں',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      height: 1.5,
                     ),
-                    hintStyle: TextStyle(
-                      color: AppTheme.textGrey.withValues(alpha: 0.7),
-                    ),
+                    textDirection: TextDirection.rtl,
                   ),
                 ),
               ),
-              const SizedBox(height: 32),
-
-              // Submit Button
-              _isLoading
-                  ? const Center(
-                      child: CircularProgressIndicator(
-                        color: AppTheme.primaryGreen,
-                      ),
-                    )
-                  : Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color:
-                                AppTheme.primaryGreen.withValues(alpha: 0.35),
-                            blurRadius: 16,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: ElevatedButton(
-                        onPressed: _submitRequest,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryGreen,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 18),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: const [
-                            Text(
-                              'تصدیق کیلئے جمع کروائیں',
-                              style: TextStyle(
-                                fontSize: 17,
-                                height: 1.5,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              textDirection: TextDirection.rtl,
-                            ),
-                            SizedBox(width: 8),
-                            Icon(Icons.arrow_back_rounded, size: 20),
-                          ],
-                        ),
-                      ),
-                    ),
-              const SizedBox(height: 32),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _roleRow(IconData icon, String text, Color iconColor) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Text(
-          text,
-          style: const TextStyle(
-            fontSize: 15,
-            color: AppTheme.textDark,
-            height: 1.5,
-            fontWeight: FontWeight.w500,
-          ),
-          textDirection: TextDirection.rtl,
-        ),
-        const SizedBox(width: 10),
-        Container(
-          padding: const EdgeInsets.all(7),
-          decoration: BoxDecoration(
-            color: iconColor.withValues(alpha: 0.12),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, size: 16, color: iconColor),
-        ),
+        const SizedBox(height: 32),
       ],
     );
   }
+}
 
-  Widget _stepRow(String number, String text, {bool isLast = false}) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: isLast ? 0 : 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+// ── Status Card Widget ────────────────────────────
+class _StatusCard extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final Color bgColor;
+  final Color borderColor;
+  final String title;
+  final String subtitle;
+  final String statusLabel;
+  final Color statusColor;
+  final Widget? extra;
+
+  const _StatusCard({
+    required this.icon,
+    required this.iconColor,
+    required this.bgColor,
+    required this.borderColor,
+    required this.title,
+    required this.subtitle,
+    required this.statusLabel,
+    required this.statusColor,
+    this.extra,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: borderColor),
+        boxShadow: [
+          BoxShadow(
+            color: iconColor.withValues(alpha: 0.08),
+            blurRadius: 12,
+          ),
+        ],
+      ),
+      child: Column(
         children: [
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 3),
-              child: Text(
-                text,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: AppTheme.textDark,
-                  height: 1.6,
-                ),
-                textDirection: TextDirection.rtl,
-                textAlign: TextAlign.right,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
+          // Status badge
           Container(
-            width: 28,
-            height: 28,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             decoration: BoxDecoration(
-              color: AppTheme.primaryGreen,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.primaryGreen.withValues(alpha: 0.3),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+              color: statusColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(20),
             ),
-            child: Center(
-              child: Text(
-                number,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
+            child: Text(
+              statusLabel,
+              style: TextStyle(
+                fontSize: 12,
+                color: statusColor,
+                fontWeight: FontWeight.bold,
+                height: 1.4,
               ),
+              textDirection: TextDirection.rtl,
             ),
           ),
+          const SizedBox(height: 20),
+
+          // Icon
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              color: iconColor,
+              size: 36,
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Title
+          Text(
+            title,
+            style: TextStyle(
+              fontFamily: 'Nastaleeq',
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: iconColor,
+              height: 1.8,
+            ),
+            textDirection: TextDirection.rtl,
+            textAlign: TextAlign.center,
+          ),
+
+          // Subtitle
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey.shade600,
+              height: 1.5,
+            ),
+            textDirection: TextDirection.rtl,
+            textAlign: TextAlign.center,
+          ),
+
+          if (extra != null) extra!,
         ],
       ),
     );
   }
 }
 
-// Section title with leading icon badge
-class _SectionTitle extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  final double size;
-
-  const _SectionTitle({
-    required this.icon,
-    required this.text,
-    this.size = 18,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Text(
-          text,
-          style: TextStyle(
-            fontSize: size,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.textDark,
-            height: 1.5,
-          ),
-          textDirection: TextDirection.rtl,
-          textAlign: TextAlign.right,
-        ),
-        const SizedBox(width: 8),
-        Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: AppTheme.primaryGreen.withValues(alpha: 0.12),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, color: AppTheme.primaryGreen, size: 16),
-        ),
-      ],
-    );
-  }
-}
-
-// Plan Card Widget
-class _PlanCard extends StatelessWidget {
+// ── Payment Method Tile (selectable, shows full number) ──
+class _PaymentMethodTile extends StatelessWidget {
   final String title;
-  final IconData icon;
-  final String price;
-  final String priceUnit;
-  final List<String> features;
-  final bool isSelected;
-  final bool isFeatured;
-  final Color color;
+  final String? subtitle;
+  final String number;
+  final Color iconBg;
+  final Widget iconWidget;
+  final bool selected;
   final VoidCallback onTap;
 
-  const _PlanCard({
+  const _PaymentMethodTile({
     required this.title,
-    required this.icon,
-    required this.price,
-    required this.priceUnit,
-    required this.features,
-    required this.isSelected,
-    required this.isFeatured,
-    required this.color,
+    this.subtitle,
+    required this.number,
+    required this.iconBg,
+    required this.iconWidget,
+    required this.selected,
     required this.onTap,
   });
 
@@ -764,444 +913,77 @@ class _PlanCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
+        duration: const Duration(milliseconds: 150),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isSelected ? color : AppTheme.borderLight,
-            width: isSelected ? 2 : 1,
+            color: selected ? const Color(0xFF6A1B9A) : AppTheme.borderLight,
+            width: selected ? 1.5 : 1,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: isSelected
-                  ? color.withValues(alpha: 0.18)
-                  : Colors.black.withValues(alpha: 0.04),
-              blurRadius: isSelected ? 20 : 10,
-              offset: const Offset(0, 6),
-            ),
-          ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: Row(
           children: [
-            // Card Header
+            // Selection indicator
             Container(
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+              width: 22,
+              height: 22,
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.06),
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
+                shape: BoxShape.circle,
+                color: selected ? const Color(0xFF6A1B9A) : Colors.transparent,
+                border: Border.all(
+                  color:
+                      selected ? const Color(0xFF6A1B9A) : AppTheme.borderLight,
+                  width: 1.5,
                 ),
               ),
+              child: selected
+                  ? const Icon(Icons.check, color: Colors.white, size: 14)
+                  : null,
+            ),
+            const SizedBox(width: 12),
+
+            // Text (name + full number)
+            Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      if (isFeatured)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: color,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: const [
-                              Icon(Icons.star_rounded,
-                                  color: Colors.white, size: 13),
-                              SizedBox(width: 3),
-                              Text(
-                                'سب سے مقبول',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  height: 1.5,
-                                ),
-                                textDirection: TextDirection.rtl,
-                              ),
-                            ],
-                          ),
-                        )
-                      else
-                        const SizedBox.shrink(),
-                      // Selection indicator
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: isSelected ? color : Colors.transparent,
-                          border: Border.all(
-                            color: isSelected
-                                ? color
-                                : AppTheme.borderLight.withValues(alpha: 0.8),
-                            width: 2,
-                          ),
-                        ),
-                        child: isSelected
-                            ? const Icon(Icons.check_rounded,
-                                color: Colors.white, size: 15)
-                            : null,
-                      ),
-                    ],
+                  Text(
+                    number,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textDark,
+                      letterSpacing: 0.5,
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: color,
-                          height: 1.5,
-                        ),
-                        textDirection: TextDirection.rtl,
-                      ),
-                      const SizedBox(width: 10),
-                      Container(
-                        padding: const EdgeInsets.all(7),
-                        decoration: BoxDecoration(
-                          color: color.withValues(alpha: 0.14),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(icon, color: color, size: 18),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text(
-                        priceUnit,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: color.withValues(alpha: 0.8),
-                          height: 1.5,
-                        ),
-                        textDirection: TextDirection.rtl,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        price,
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: color,
-                          height: 1.5,
-                        ),
-                      ),
-                    ],
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle != null ? '$title • $subtitle' : title,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
                   ),
                 ],
               ),
             ),
+            const SizedBox(width: 10),
 
-            // Features
-            Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  ...features.map(
-                    (f) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              f,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                color: AppTheme.textDark,
-                                height: 1.5,
-                              ),
-                              textDirection: TextDirection.rtl,
-                              textAlign: TextAlign.right,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Icon(
-                            Icons.check_circle_rounded,
-                            color: color,
-                            size: 18,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: onTap,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: isSelected ? color : Colors.white,
-                        foregroundColor: isSelected ? Colors.white : color,
-                        elevation: 0,
-                        side: BorderSide(
-                          color: color.withValues(alpha: isSelected ? 0 : 0.4),
-                          width: 1.5,
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            isSelected ? 'منتخب کیا گیا' : 'یہ پلان منتخب کریں',
-                            style: const TextStyle(
-                              fontSize: 15,
-                              height: 1.5,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            textDirection: TextDirection.rtl,
-                          ),
-                          if (isSelected) ...const [
-                            SizedBox(width: 6),
-                            Icon(Icons.check_rounded, size: 17),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+            // Icon badge
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: iconBg,
+                borderRadius: BorderRadius.circular(10),
               ),
+              alignment: Alignment.center,
+              child: iconWidget,
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-// Payment Card Widget
-class _PaymentCard extends StatelessWidget {
-  final String name;
-  final String number;
-  final Color color;
-  final IconData icon;
-  final VoidCallback onCopy;
-
-  const _PaymentCard({
-    required this.name,
-    required this.number,
-    required this.color,
-    required this.icon,
-    required this.onCopy,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.22)),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.07),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // Copy Button
-          Material(
-            color: Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-            child: InkWell(
-              onTap: onCopy,
-              borderRadius: BorderRadius.circular(10),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 13,
-                  vertical: 9,
-                ),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.copy_rounded, size: 14, color: color),
-                    const SizedBox(width: 5),
-                    Text(
-                      'کاپی',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: color,
-                        fontWeight: FontWeight.bold,
-                        height: 1.5,
-                      ),
-                      textDirection: TextDirection.rtl,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          const Spacer(),
-          // Account Info
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                number,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textDark,
-                  height: 1.5,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Row(
-                children: [
-                  Text(
-                    name,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: color,
-                      fontWeight: FontWeight.bold,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(width: 10),
-          Container(
-            padding: const EdgeInsets.all(9),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, size: 17, color: color),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// Success Screen
-class _SuccessScreen extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF1B5E20), Color(0xFF2E7D32), Color(0xFF43A047)],
-          ),
-        ),
-        child: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 110,
-                    height: 110,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.15),
-                          blurRadius: 24,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.check_circle_rounded,
-                      color: AppTheme.primaryGreen,
-                      size: 68,
-                    ),
-                  ),
-                  const SizedBox(height: 36),
-                  const Text(
-                    'درخواست موصول ہو گئی',
-                    style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      height: 1.5,
-                    ),
-                    textDirection: TextDirection.rtl,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'آپ کی ادائیگی کی تفصیلات موصول ہو چکی ہیں۔ تصدیق کے بعد سبسکرپشن فعال کر دی جائے گی۔',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white.withValues(alpha: 0.9),
-                      height: 1.7,
-                    ),
-                    textDirection: TextDirection.rtl,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 48),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: AppTheme.primaryGreen,
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      child: const Text(
-                        'واپس جائیں',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          height: 1.5,
-                        ),
-                        textDirection: TextDirection.rtl,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
         ),
       ),
     );

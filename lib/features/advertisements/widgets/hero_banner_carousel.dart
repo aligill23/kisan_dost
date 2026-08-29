@@ -186,20 +186,14 @@ class _AdCardState extends State<_AdCard> {
   }
 
   Future<void> _initVideo() async {
-    try {
-      // Video pehle download/cache karo, phir local file se play karo
-      final file =
-          await DefaultCacheManager().getSingleFile(widget.ad.videoUrl);
-
-      _videoCtrl = VideoPlayerController.file(file);
-      await _videoCtrl!.initialize();
-      _videoCtrl!.setLooping(true);
-      _videoCtrl!.setVolume(0);
-      _videoCtrl!.play();
-      if (mounted) setState(() => _videoReady = true);
-    } catch (e) {
-      debugPrint('Video load error: $e');
-    }
+    _videoCtrl = VideoPlayerController.networkUrl(
+      Uri.parse(widget.ad.videoUrl),
+    );
+    await _videoCtrl!.initialize();
+    _videoCtrl!.setLooping(true);
+    _videoCtrl!.setVolume(0);
+    _videoCtrl!.play();
+    if (mounted) setState(() => _videoReady = true);
   }
 
   @override
@@ -229,7 +223,7 @@ class _AdCardState extends State<_AdCard> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // ── Media — Image or Video ─────────
+              // ── Media ─────────────────────────
               if (widget.ad.mediaType == 'video' &&
                   _videoReady &&
                   _videoCtrl != null)
@@ -246,7 +240,7 @@ class _AdCardState extends State<_AdCard> {
                   imageUrl: widget.ad.bannerImage,
                   fit: BoxFit.cover,
                   placeholder: (_, __) => Container(
-                    color: const Color(0xFF1A6B3A).withValues(alpha: 0.2),
+                    color: Colors.grey.shade200,
                   ),
                   errorWidget: (_, __, ___) => Container(
                     color: const Color(0xFF1A6B3A),
@@ -255,118 +249,136 @@ class _AdCardState extends State<_AdCard> {
               else
                 Container(color: const Color(0xFF1A6B3A)),
 
-              // ── Video badge ───────────────────
-              if (widget.ad.mediaType == 'video')
-                Positioned(
-                  top: 10,
-                  left: 10,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.play_circle_filled,
-                          color: Colors.white,
-                          size: 14,
-                        ),
-                        SizedBox(width: 4),
-                        Text(
-                          'VIDEO',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+              // ── Light overlay top ──────────────
+              // Sirf top pe — Sponsored badge ke liye
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  height: 48,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.45),
+                        Colors.transparent,
                       ],
                     ),
                   ),
                 ),
+              ),
 
-              // ── Content ───────────────────────
-              // ── Content ───────────────────────
-              // ── Content ───────────────────────
+              // ── Light overlay bottom ───────────
+              // Sirf bottom pe — CTA button ke liye
               Positioned(
-                bottom: 14,
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  height: 64,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.5),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // ── TOP — Sponsored badge only ─────
+              Positioned(
+                top: 10,
+                left: 12,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.3),
+                      width: 0.5,
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.workspace_premium,
+                        color: Colors.white,
+                        size: 11,
+                      ),
+                      SizedBox(width: 4),
+                      Text(
+                        'Sponsored',
+                        style: TextStyle(
+                          // ✅ Default Flutter font
+                          fontSize: 11,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // ── BOTTOM — CTA only ──────────────
+              Positioned(
+                bottom: 12,
                 left: 14,
                 right: 14,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Company name - apna alag box
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        widget.ad.companyName,
-                        style: TextStyle(
-                          fontFamily:
-                              'Roboto', // ya 'Poppins', ya jo bhi English font pubspec mein add ho
-                          fontSize: 5,
-                          color: Colors.white.withValues(alpha: 0.85),
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-
-                    // Headline - apna alag box
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        widget.ad.headline,
-                        style: const TextStyle(
-                          fontFamily: 'Nastaleeq',
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                          height: 1.6,
-                        ),
-                        textDirection: TextDirection.rtl,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-
-                    // Button - already alag hai
-                    Align(
-                      alignment: Alignment.centerRight,
+                    // ✅ CTA Button — right
+                    GestureDetector(
+                      onTap: widget.onTap,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 7,
+                          horizontal: 18,
+                          vertical: 9,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1A6B3A),
-                          borderRadius: BorderRadius.circular(20),
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.2),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
                         ),
-                        child: Text(
-                          widget.ad.buttonText,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                            height: 1.4,
-                          ),
-                          textDirection: TextDirection.rtl,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              widget.ad.buttonText,
+                              style: const TextStyle(
+                                // ✅ Default Flutter font
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1A6B3A),
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Icon(
+                              Icons.arrow_forward,
+                              color: Color(0xFF1A6B3A),
+                              size: 14,
+                            ),
+                          ],
                         ),
                       ),
                     ),

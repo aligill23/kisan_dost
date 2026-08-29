@@ -67,3 +67,6 @@ flutter:
     - family: Noto
       fonts:
         - asset: assets/fonts/NafeeesWeb.ttf
+    - family: Inter      
+      fonts:
+      - asset: assets/fonts/inter.ttf

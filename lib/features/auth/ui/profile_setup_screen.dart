@@ -54,6 +54,17 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     }
   }
 
+  String _getRoleLabelEn(String role) {
+    switch (role) {
+      case 'arhti':
+        return 'Arhti';
+      case 'dealer':
+        return 'Dealer / Company';
+      default:
+        return 'Farmer';
+    }
+  }
+
   String _getRoleDescription(String role) {
     switch (role) {
       case 'arhti':
@@ -65,6 +76,17 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     }
   }
 
+  String _getRoleDescriptionEn(String role) {
+    switch (role) {
+      case 'arhti':
+        return 'You are registering as an Arhti';
+      case 'dealer':
+        return 'You are registering as a Dealer';
+      default:
+        return 'You are registering as a Farmer';
+    }
+  }
+
   String _getBusinessLabel(String role) {
     switch (role) {
       case 'arhti':
@@ -73,6 +95,17 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         return 'دکان یا کمپنی کا نام';
       default:
         return 'فارم کا نام';
+    }
+  }
+
+  String _getBusinessLabelEn(String role) {
+    switch (role) {
+      case 'arhti':
+        return 'Arhat Name';
+      case 'dealer':
+        return 'Shop / Company Name';
+      default:
+        return 'Farm Name';
     }
   }
 
@@ -284,6 +317,17 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 textDirection: TextDirection.rtl,
                 textAlign: TextAlign.center,
               ),
+              const SizedBox(height: 2),
+              const Text(
+                'Checking referral code',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.primaryGreen,
+                ),
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 6),
               Text(
                 "براہ کرم انتظار کریں...",
@@ -293,6 +337,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                   height: 1.5,
                 ),
                 textDirection: TextDirection.rtl,
+              ),
+              Text(
+                'Please wait...',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 11,
+                  color: Colors.grey.shade500,
+                ),
               ),
             ],
           ),
@@ -350,6 +402,17 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 textDirection: TextDirection.rtl,
                 textAlign: TextAlign.center,
               ),
+              const SizedBox(height: 2),
+              const Text(
+                'Referral code is valid!',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.primaryGreen,
+                ),
+                textAlign: TextAlign.center,
+              ),
               if (ambassadorName.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(
@@ -361,6 +424,15 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                     height: 1.8,
                   ),
                   textDirection: TextDirection.rtl,
+                  textAlign: TextAlign.center,
+                ),
+                Text(
+                  'Thanks to $ambassadorName',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                  ),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -430,6 +502,16 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                           textDirection: TextDirection.rtl,
                         ),
                         Text(
+                          'Complete Your Profile',
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white.withValues(alpha: 0.9),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
                           'کسان دوست پر اپنی شناخت بنائیں',
                           style: TextStyle(
                             fontSize: 13,
@@ -470,15 +552,30 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              Text(
-                                _getRoleLabel(role),
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: roleColor,
-                                  height: 1.5,
-                                ),
-                                textDirection: TextDirection.rtl,
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    _getRoleLabel(role),
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: roleColor,
+                                      height: 1.5,
+                                    ),
+                                    textDirection: TextDirection.rtl,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '(${_getRoleLabelEn(role)})',
+                                    style: TextStyle(
+                                      fontFamily: 'Inter',
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: roleColor,
+                                    ),
+                                  ),
+                                ],
                               ),
                               Text(
                                 _getRoleDescription(role),
@@ -488,6 +585,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                                   height: 1.4,
                                 ),
                                 textDirection: TextDirection.rtl,
+                              ),
+                              Text(
+                                _getRoleDescriptionEn(role),
+                                style: const TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 10.5,
+                                  color: AppTheme.textGrey,
+                                ),
                               ),
                             ],
                           ),
@@ -605,6 +710,15 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                       textAlign: TextAlign.center,
                       textDirection: TextDirection.rtl,
                     ),
+                    const Text(
+                      'Upload Photo',
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 10.5,
+                        color: AppTheme.textGrey,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                     const SizedBox(height: 24),
 
                     // Form Card
@@ -619,7 +733,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           // Name
-                          _FieldLabel(text: 'پورا نام *'),
+                          _FieldLabel(
+                              text: 'پورا نام *', textEn: 'Full Name *'),
                           const SizedBox(height: 8),
                           _CustomField(
                             controller: _nameController,
@@ -632,7 +747,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                           const SizedBox(height: 16),
 
                           // Business Name
-                          _FieldLabel(text: '${_getBusinessLabel(role)} *'),
+                          _FieldLabel(
+                            text: '${_getBusinessLabel(role)} *',
+                            textEn: '${_getBusinessLabelEn(role)} *',
+                          ),
                           const SizedBox(height: 8),
                           _CustomField(
                             controller: _businessNameController,
@@ -658,7 +776,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
                           // Village (farmer only)
                           if (role == 'farmer') ...[
-                            _FieldLabel(text: 'گاؤں کا نام (اختیاری)'),
+                            _FieldLabel(
+                              text: 'گاؤں کا نام (اختیاری)',
+                              textEn: 'Village Name (Optional)',
+                            ),
                             const SizedBox(height: 8),
                             _CustomField(
                               controller: _villageController,
@@ -674,6 +795,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                               text: role == 'arhti'
                                   ? 'منڈی پتہ *'
                                   : 'دکان کا پتہ *',
+                              textEn: role == 'arhti'
+                                  ? 'Market Address *'
+                                  : 'Shop Address *',
                             ),
                             const SizedBox(height: 8),
                             _CustomField(
@@ -690,7 +814,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
                           // Notes
                           _FieldLabel(
-                              text: 'اپنے بارے میں مزید بتائیں (اختیاری)'),
+                            text: 'اپنے بارے میں مزید بتائیں (اختیاری)',
+                            textEn: 'Tell us more',
+                          ),
                           const SizedBox(height: 8),
                           _CustomField(
                             controller: _notesController,
@@ -751,15 +877,32 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.end,
                                       children: [
-                                        const Text(
-                                          'ریفرل کوڈ',
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppTheme.textDark,
-                                            height: 1.5,
-                                          ),
-                                          textDirection: TextDirection.rtl,
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.end,
+                                          children: [
+                                            const Text(
+                                              'ریفرل کوڈ',
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                                color: AppTheme.textDark,
+                                                height: 1.5,
+                                              ),
+                                              textDirection: TextDirection.rtl,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              '(Referral Code)',
+                                              style: TextStyle(
+                                                fontFamily: 'Inter',
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                color: AppTheme.textDark
+                                                    .withValues(alpha: 0.7),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                         Text(
                                           'اختیاری -صرف کسانوں کیلئے',
@@ -769,6 +912,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                                             height: 1.4,
                                           ),
                                           textDirection: TextDirection.rtl,
+                                        ),
+                                        Text(
+                                          'Optional - for farmers only',
+                                          style: TextStyle(
+                                            fontFamily: 'Inter',
+                                            fontSize: 10,
+                                            color: Colors.grey.shade500,
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -808,6 +959,17 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                                       height: 1.8,
                                     ),
                                     textDirection: TextDirection.rtl,
+                                    textAlign: TextAlign.right,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'If a Kissan Dost ambassador told you about the app, enter their referral code.',
+                                    style: TextStyle(
+                                      fontFamily: 'Inter',
+                                      fontSize: 11,
+                                      color: AppTheme.textGrey,
+                                      height: 1.4,
+                                    ),
                                     textAlign: TextAlign.right,
                                   ),
                                   const SizedBox(height: 14),
@@ -1096,15 +1258,29 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                                 color: Colors.white,
                                 size: 20,
                               ),
-                              label: const Text(
-                                'معلومات محفوظ کریں',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                  height: 1.5,
-                                ),
-                                textDirection: TextDirection.rtl,
+                              label: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: const [
+                                  Text(
+                                    'معلومات محفوظ کریں',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                      height: 1.5,
+                                    ),
+                                    textDirection: TextDirection.rtl,
+                                  ),
+                                  Text(
+                                    'Save Information',
+                                    style: TextStyle(
+                                      fontFamily: 'Inter',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -1122,19 +1298,37 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
 class _FieldLabel extends StatelessWidget {
   final String text;
-  const _FieldLabel({required this.text});
+  final String? textEn;
+  const _FieldLabel({required this.text, this.textEn});
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: const TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-        color: AppTheme.textDark,
-        height: 1.5,
-      ),
-      textDirection: TextDirection.rtl,
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        Text(
+          text,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.textDark,
+            height: 1.5,
+          ),
+          textDirection: TextDirection.rtl,
+        ),
+        if (textEn != null) ...[
+          const SizedBox(width: 6),
+          Text(
+            '($textEn)',
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: AppTheme.textGrey,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

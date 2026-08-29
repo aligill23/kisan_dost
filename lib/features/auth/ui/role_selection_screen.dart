@@ -18,21 +18,27 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
     {
       'role': 'farmer',
       'title': 'کسان',
+      'titleEn': 'Farmer',
       'description': 'اپنی فصلیں پوسٹ کریں، بہترین قیمت حاصل کریں',
+      'descriptionEn': 'Post your crops and get the best price',
       'image': 'assets/images/farmer.png',
       'color': Color(0xFF2E7D32),
     },
     {
       'role': 'arhti',
       'title': 'آڑھتی',
+      'titleEn': 'Arhti',
       'description': 'فصلیں خریدیں اور کسانوں سے رابطہ کریں',
+      'descriptionEn': 'Buy crops and connect with farmers',
       'image': 'assets/images/arhti.png',
       'color': Color(0xFF1565C0),
     },
     {
       'role': 'dealer',
       'title': 'ڈیلر / کمپنی',
+      'titleEn': 'Dealer / Company',
       'description': 'زرعی مصنوعات فروخت کریں اور کسانوں تک پہنچیں',
+      'descriptionEn': 'Sell agricultural products and reach farmers',
       'image': 'assets/images/dealer.png',
       'color': Color(0xFF6A1B9A),
     },
@@ -116,6 +122,16 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                                 ),
                                 textDirection: TextDirection.rtl,
                               ),
+                              const SizedBox(width: 6),
+                              const Text(
+                                '(Kissan Dost)',
+                                style: TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 12,
+                                  color: AppTheme.textGrey,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
                             ],
                           ),
                           const SizedBox(height: 12),
@@ -144,7 +160,17 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                                   textDirection: TextDirection.rtl,
                                   textAlign: TextAlign.center,
                                 ),
-                                SizedBox(height: 4),
+                                Text(
+                                  'Select Your Role',
+                                  style: TextStyle(
+                                    fontFamily: 'Inter',
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.primaryGreen,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                SizedBox(height: 6),
                                 Text(
                                   'اپنے مطابق کردار منتخب کریں اور کسان دوست کے ساتھ جڑیں',
                                   style: TextStyle(
@@ -153,6 +179,17 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                                     height: 1.6,
                                   ),
                                   textDirection: TextDirection.rtl,
+                                  textAlign: TextAlign.center,
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  'Choose the role that fits you and join Kissan Dost',
+                                  style: TextStyle(
+                                    fontFamily: 'Inter',
+                                    fontSize: 11,
+                                    color: AppTheme.textGrey,
+                                    height: 1.5,
+                                  ),
                                   textAlign: TextAlign.center,
                                 ),
                               ],
@@ -212,23 +249,37 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                       color: AppTheme.primaryGreen.withValues(alpha: 0.06),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'آپ کا ڈیٹا محفوظ اور خفیہ رکھا جائے گا',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppTheme.primaryGreen,
-                            height: 1.5,
-                          ),
-                          textDirection: TextDirection.rtl,
+                    child: Column(
+                      children: const [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'آپ کا ڈیٹا محفوظ اور خفیہ رکھا جائے گا',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppTheme.primaryGreen,
+                                height: 1.5,
+                              ),
+                              textDirection: TextDirection.rtl,
+                            ),
+                            SizedBox(width: 8),
+                            Icon(
+                              Icons.shield_outlined,
+                              color: AppTheme.primaryGreen,
+                              size: 14,
+                            ),
+                          ],
                         ),
-                        SizedBox(width: 8),
-                        Icon(
-                          Icons.shield_outlined,
-                          color: AppTheme.primaryGreen,
-                          size: 14,
+                        SizedBox(height: 2),
+                        Text(
+                          'Your data will be kept safe and confidential',
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 10.5,
+                            color: AppTheme.primaryGreen,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
                       ],
                     ),
@@ -290,6 +341,16 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                                 height: 1.5,
                               ),
                               textDirection: TextDirection.rtl,
+                            ),
+                            SizedBox(width: 6),
+                            Text(
+                              '(Continue)',
+                              style: TextStyle(
+                                fontFamily: 'Inter',
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
                             ),
                             SizedBox(width: 8),
                             Icon(
@@ -394,6 +455,16 @@ class _RoleCard extends StatelessWidget {
                           ),
                           textDirection: TextDirection.rtl,
                         ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '(${role['titleEn']})',
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: isSelected ? color : AppTheme.textGrey,
+                          ),
+                        ),
                         const SizedBox(width: 8),
                         AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
@@ -421,6 +492,17 @@ class _RoleCard extends StatelessWidget {
                         height: 1.5,
                       ),
                       textDirection: TextDirection.rtl,
+                      textAlign: TextAlign.right,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      role['descriptionEn'] as String,
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 10.5,
+                        color: AppTheme.textGrey,
+                        height: 1.4,
+                      ),
                       textAlign: TextAlign.right,
                     ),
                   ],

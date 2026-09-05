@@ -15,6 +15,7 @@ import 'profile_screen.dart';
 import '../../subscription/ui/subscription_screen.dart';
 import 'package:go_router/go_router.dart';
 import '../../../shared/widgets/notification_bell.dart';
+import '../../../shared/widgets/announcement_popup.dart';
 
 class DealerDashboard extends StatefulWidget {
   const DealerDashboard({super.key});
@@ -29,11 +30,22 @@ class _DealerDashboardState extends State<DealerDashboard> {
   String _currentUserId = '';
 
   @override
+  // dealer_dashboard.dart initState:
+  @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ProfileViewModel>().loadUserProfile();
-      _init();
+
+      // ✅ Same announcement
+      Future.delayed(
+        const Duration(milliseconds: 800),
+        () {
+          if (mounted) {
+            AnnouncementPopup.showIfNeeded(context);
+          }
+        },
+      );
     });
   }
 

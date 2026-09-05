@@ -15,6 +15,7 @@ import 'profile_screen.dart';
 import '../../business/ui/find_arhti_screen.dart';
 import '../../../shared/widgets/notification_bell.dart';
 import '../../advertisements/widgets/hero_banner_carousel.dart';
+import '../../../shared/widgets/announcement_popup.dart';
 
 class FarmerDashboard extends StatefulWidget {
   const FarmerDashboard({super.key});
@@ -28,7 +29,18 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Profile load
       context.read<ProfileViewModel>().loadUserProfile();
+
+      // ✅ Announcement — screen build hone ke baad
+      Future.delayed(
+        const Duration(milliseconds: 800),
+        () {
+          if (mounted) {
+            AnnouncementPopup.showIfNeeded(context);
+          }
+        },
+      );
     });
   }
 
@@ -60,6 +72,12 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
       'route': 'find_arhti',
     },
     {
+      'title': ' زرعی قرضہ',
+      'image': 'assets/images/loan.png',
+      'route': 'loan',
+      'disabled': true,
+    },
+    {
       'title': 'فصل رہنمائی',
       'image': 'assets/images/crop_guidlines.png',
       'route': 'guides',
@@ -79,7 +97,6 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
   void _onActionTap(String route) {
     switch (route) {
       case 'agri_booking':
-        // Feature not active yet — do nothing.
         break;
       case 'mandi':
         Navigator.push(
@@ -90,12 +107,8 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
             context, MaterialPageRoute(builder: (_) => const CropPostScreen()));
         break;
       case 'find_arhti':
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const FindArhtiScreen(),
-          ),
-        );
+        Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const FindArhtiScreen()));
         break;
       case 'marketplace':
         Navigator.push(context,
@@ -114,6 +127,110 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
             MaterialPageRoute(builder: (_) => const FarmerOrdersScreen()));
         break;
     }
+  }
+
+  void _showAllQuickActions() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.75,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10, bottom: 4),
+                    child: Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          child: const Icon(
+                            Icons.close,
+                            color: AppTheme.textGrey,
+                            size: 22,
+                          ),
+                        ),
+                        const Row(
+                          children: [
+                            Text(
+                              'تمام سہولیات',
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textDark,
+                                height: 1.5,
+                              ),
+                              textDirection: TextDirection.rtl,
+                            ),
+                            SizedBox(width: 6),
+                            Text('🌿', style: TextStyle(fontSize: 16)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: GridView.builder(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                      itemCount: _quickActions.length,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        mainAxisSpacing: 14,
+                        crossAxisSpacing: 12,
+                        childAspectRatio: 0.8,
+                      ),
+                      itemBuilder: (context, index) {
+                        final action = _quickActions[index];
+                        final isDisabled = action['disabled'] == true;
+                        return _QuickActionGridCard(
+                          title: action['title'] as String,
+                          imagePath: action['image'] as String,
+                          disabled: isDisabled,
+                          onTap: isDisabled
+                              ? null
+                              : () {
+                                  Navigator.pop(context);
+                                  _onActionTap(action['route'] as String);
+                                },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -273,7 +390,7 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       TextButton(
-                        onPressed: () {},
+                        onPressed: _showAllQuickActions,
                         style: TextButton.styleFrom(
                           padding: EdgeInsets.zero,
                           minimumSize: Size.zero,
@@ -320,13 +437,22 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
                     itemBuilder: (context, index) {
                       final action = _quickActions[index];
                       final isDisabled = action['disabled'] == true;
-                      return _QuickActionCard(
-                        title: action['title'] as String,
-                        imagePath: action['image'] as String,
-                        disabled: isDisabled,
-                        onTap: isDisabled
-                            ? null
-                            : () => _onActionTap(action['route'] as String),
+                      // ✅ FIX: give each card a fixed width inside the
+                      // horizontal ListView (unbounded width otherwise)
+                      // and add spacing between cards.
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: SizedBox(
+                          width: 90,
+                          child: _QuickActionCard(
+                            title: action['title'] as String,
+                            imagePath: action['image'] as String,
+                            disabled: isDisabled,
+                            onTap: isDisabled
+                                ? null
+                                : () => _onActionTap(action['route'] as String),
+                          ),
+                        ),
                       );
                     },
                   ),
@@ -491,7 +617,7 @@ class _HeaderButton extends StatelessWidget {
   }
 }
 
-/// Quick Action Card
+/// Quick Action Card (horizontal scroll cards on the dashboard)
 class _QuickActionCard extends StatelessWidget {
   final String title;
   final String imagePath;
@@ -513,12 +639,12 @@ class _QuickActionCard extends StatelessWidget {
         const SizedBox(height: 10),
         Image.asset(
           imagePath,
-          width: 52,
-          height: 52,
+          width: 46,
+          height: 46,
           fit: BoxFit.contain,
           errorBuilder: (_, __, ___) => Container(
-            width: 52,
-            height: 52,
+            width: 46,
+            height: 46,
             decoration: BoxDecoration(
               color: AppTheme.primaryGreen.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(14),
@@ -526,7 +652,7 @@ class _QuickActionCard extends StatelessWidget {
             child: const Icon(
               Icons.grass,
               color: AppTheme.primaryGreen,
-              size: 28,
+              size: 24,
             ),
           ),
         ),
@@ -546,27 +672,28 @@ class _QuickActionCard extends StatelessWidget {
             maxLines: 2,
           ),
         ),
-        if (disabled) ...[
-          const SizedBox(height: 2),
-          const Text(
-            'جلد آرہا ہے',
-            style: TextStyle(
-              fontSize: 8.5,
-              fontWeight: FontWeight.w500,
-              color: AppTheme.textGrey,
-              height: 1.3,
-            ),
-            textDirection: TextDirection.rtl,
-            textAlign: TextAlign.center,
+        const SizedBox(height: 2),
+        // ✅ FIX: always reserve this line's space (empty when not
+        // disabled) so every card has identical layout height and the
+        // icon/title never shift between normal and locked cards.
+        Text(
+          disabled ? 'جلد آرہا ہے' : '',
+          style: const TextStyle(
+            fontSize: 8.5,
+            fontWeight: FontWeight.w500,
+            color: AppTheme.textGrey,
+            height: 1.3,
           ),
-        ],
+          textDirection: TextDirection.rtl,
+          textAlign: TextAlign.center,
+        ),
         const SizedBox(height: 10),
       ],
     );
 
     final card = Container(
-      width: 86,
-      margin: const EdgeInsets.only(right: 12),
+      width: double.infinity,
+      height: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -583,12 +710,13 @@ class _QuickActionCard extends StatelessWidget {
 
     if (disabled) {
       return Stack(
+        fit: StackFit.expand,
         clipBehavior: Clip.none,
         children: [
           IgnorePointer(child: card),
           Positioned(
-            top: 4,
-            right: 4,
+            top: 6,
+            right: 6,
             child: Container(
               width: 20,
               height: 20,
@@ -1012,6 +1140,135 @@ class _Badge extends StatelessWidget {
           Icon(icon, size: 11, color: color),
         ],
       ),
+    );
+  }
+}
+
+/// Quick Action Card for the "See All" grid popup (no fixed width, fits grid cell)
+class _QuickActionGridCard extends StatelessWidget {
+  final String title;
+  final String imagePath;
+  final VoidCallback? onTap;
+  final bool disabled;
+
+  const _QuickActionGridCard({
+    required this.title,
+    required this.imagePath,
+    required this.onTap,
+    this.disabled = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const SizedBox(height: 10),
+        Image.asset(
+          imagePath,
+          width: 46,
+          height: 46,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: AppTheme.primaryGreen.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.grass,
+              color: AppTheme.primaryGreen,
+              size: 24,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textDark,
+              height: 1.4,
+            ),
+            textDirection: TextDirection.rtl,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+          ),
+        ),
+        const SizedBox(height: 2),
+        // ✅ FIX: always reserve this line's space (empty when not
+        // disabled) so every grid card has identical layout height and
+        // the icon/title never shift between normal and locked cards.
+        Text(
+          disabled ? 'جلد آرہا ہے' : '',
+          style: const TextStyle(
+            fontSize: 8.5,
+            fontWeight: FontWeight.w500,
+            color: AppTheme.textGrey,
+            height: 1.3,
+          ),
+          textDirection: TextDirection.rtl,
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 10),
+      ],
+    );
+
+    final card = Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: disabled ? Opacity(opacity: 0.5, child: content) : content,
+    );
+
+    if (disabled) {
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          IgnorePointer(child: card),
+          Positioned(
+            top: 4,
+            right: 4,
+            child: Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.15),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.lock_rounded,
+                size: 12,
+                color: AppTheme.textGrey,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return GestureDetector(
+      onTap: onTap,
+      child: card,
     );
   }
 }

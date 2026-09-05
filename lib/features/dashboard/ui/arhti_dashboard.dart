@@ -13,8 +13,8 @@ import '../../subscription/ui/subscription_screen.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../shared/widgets/notification_bell.dart';
-// File top pe ye import hona chahiye
 import '../../crops/ui/crop_detail_screen.dart';
+import '../../../shared/widgets/announcement_popup.dart';
 
 class ArhtiDashboard extends StatefulWidget {
   const ArhtiDashboard({super.key});
@@ -28,13 +28,26 @@ class _ArhtiDashboardState extends State<ArhtiDashboard> {
   bool _checkingSubscription = true;
 
   @override
+  // dealer_dashboard.dart initState:
+  @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ProfileViewModel>().loadUserProfile();
-      _checkSubscription();
+
+      // ✅ Same announcement
+      Future.delayed(
+        const Duration(milliseconds: 800),
+        () {
+          if (mounted) {
+            AnnouncementPopup.showIfNeeded(context);
+          }
+        },
+      );
     });
   }
+
+// arhti_dashboard.dart mein bhi same ✅
 
   Future<void> _checkSubscription() async {
     final active = await SubscriptionService.isSubscriptionActive();

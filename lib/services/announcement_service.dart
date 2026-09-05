@@ -1,6 +1,5 @@
-// lib/services/announcement_service.dart
-
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 
 class AnnouncementModel {
   final String imageUrl;
@@ -27,24 +26,47 @@ class AnnouncementModel {
 class AnnouncementService {
   static Future<AnnouncementModel?> getActive() async {
     try {
+      debugPrint('📢 AnnouncementService: Fetching...');
+
       final doc = await FirebaseFirestore.instance
           .collection('announcements')
           .doc('current')
           .get();
 
-      if (!doc.exists) return null;
+      debugPrint('📢 Doc exists: ${doc.exists}');
 
-      final model = AnnouncementModel.fromMap(doc.data()!);
-
-      if (!model.isActive) return null;
-      if (model.imageUrl.isEmpty) return null;
-
-      if (model.showUntil != null && DateTime.now().isAfter(model.showUntil!)) {
+      if (!doc.exists) {
+        debugPrint('❌ No document found!');
         return null;
       }
 
+      debugPrint('📢 Raw data: ${doc.data()}');
+
+      final model = AnnouncementModel.fromMap(doc.data()!);
+
+      debugPrint('📢 isActive: ${model.isActive}');
+      debugPrint('📢 imageUrl: ${model.imageUrl}');
+      debugPrint('📢 showUntil: ${model.showUntil}');
+
+      if (!model.isActive) {
+        debugPrint('❌ isActive is FALSE — return null');
+        return null;
+      }
+
+      if (model.imageUrl.isEmpty) {
+        debugPrint('❌ imageUrl is EMPTY — return null');
+        return null;
+      }
+
+      if (model.showUntil != null && DateTime.now().isAfter(model.showUntil!)) {
+        debugPrint('❌ showUntil EXPIRED: ${model.showUntil}');
+        return null;
+      }
+
+      debugPrint('✅ Announcement valid — returning!');
       return model;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('❌ AnnouncementService ERROR: $e');
       return null;
     }
   }

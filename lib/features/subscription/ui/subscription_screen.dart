@@ -3,7 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io';
 import '../../../core/theme/app_theme.dart';
 import '../../../services/r2_upload_service.dart';
@@ -16,13 +15,15 @@ class SubscriptionScreen extends StatefulWidget {
 }
 
 class _SubscriptionScreenState extends State<SubscriptionScreen> {
-  // ── State ─────────────────────────────────────
+  // ── State ─────────────────────────────────
   bool _isLoading = true;
   bool _isSubmitting = false;
+  bool _submitLock = false;
   String _userId = '';
+  String _userName = '';
 
-  // Existing subscription
-  String _subStatus = ''; // '', pending, active, rejected
+  // Subscription
+  String _subStatus = '';
   String _subDocId = '';
   DateTime? _subExpiry;
   DateTime? _subCreatedAt;
@@ -32,15 +33,16 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   File? _receiptFile;
   double _uploadProgress = 0;
   final _picker = ImagePicker();
-
-  // ── Payment method selection ───────────────────
-  // 'jazzcash' | 'easypaisa' | 'bank'
   String _selectedMethod = 'jazzcash';
 
-  static const String _jazzCashNumber = '03266621834';
-  static const String _easyPaisaNumber = '03266621834';
-  static const String _bankAccountNumber = '0020105778240018';
-  static const String _bankName = 'Allied Bank';
+  // ── Constants ─────────────────────────────
+  static const _jazz = '03266621834';
+  static const _easy = '03266621834';
+  static const _bank = 'PK81ABPA0020105778240018';
+  static const _bankName = 'الائیڈ بینک';
+  static const _accountTitle = 'Wajahat Ali';
+  static const _green = Color(0xFF1B8A3D);
+  static const _darkGreen = Color(0xFF0E5F28);
 
   @override
   void initState() {
@@ -54,75 +56,119 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     super.dispose();
   }
 
-  // ── Load existing subscription ────────────────
+  // ── Load Data ─────────────────────────────
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       final prefs = await SharedPreferences.getInstance();
       _userId = uid ?? prefs.getString('userId') ?? '';
+      _userName = prefs.getString('userName') ?? '';
 
       if (_userId.isEmpty) {
         setState(() => _isLoading = false);
         return;
       }
 
-      // ✅ Check existing subscription
-      final query = await FirebaseFirestore.instance
-          .collection('subscriptions')
-          .where('userId', isEqualTo: _userId)
-          .orderBy('createdAt', descending: true)
-          .limit(1)
-          .get();
+      final results = await Future.wait([
+        FirebaseFirestore.instance
+            .collection('subscriptions')
+            .where('userId', isEqualTo: _userId)
+            .orderBy('createdAt', descending: true)
+            .limit(1)
+            .get(),
+        FirebaseFirestore.instance.collection('users').doc(_userId).get(),
+      ]);
 
-      if (query.docs.isNotEmpty) {
-        final data = query.docs.first.data();
-        final status = data['status'] ?? '';
-        _subDocId = query.docs.first.id;
-        _subStatus = status;
+      final subQuery = results[0] as QuerySnapshot;
+      final userDoc = results[1] as DocumentSnapshot;
 
-        // Parse expiry
-        final expStr = data['subscriptionExpiryDate'] ?? '';
-        if (expStr.isNotEmpty) {
-          try {
-            _subExpiry = DateTime.parse(expStr);
-          } catch (_) {}
+      // Users doc — subscriptionStatus
+      if (userDoc.exists) {
+        final ud = userDoc.data() as Map<String, dynamic>;
+        final userSubStatus = ud['subscriptionStatus'] ?? '';
+
+        if (userSubStatus == 'active') {
+          _subStatus = 'active';
+          final exp = ud['subscriptionExpiry'];
+          if (exp != null) {
+            _subExpiry = (exp as dynamic).toDate();
+          }
         }
 
-        // Parse createdAt
-        final cat = data['createdAt'];
-        if (cat != null) {
-          _subCreatedAt = (cat as Timestamp).toDate();
+        if (_userName.isEmpty) {
+          _userName = ud['name'] ?? '';
+        }
+      }
+
+      // Subscriptions collection
+      if (subQuery.docs.isNotEmpty) {
+        final data = subQuery.docs.first.data() as Map<String, dynamic>;
+        final status = data['status'] ?? '';
+
+        if (status == 'active' || _subStatus != 'active') {
+          _subStatus = status;
+          _subDocId = subQuery.docs.first.id;
+
+          final expStr = data['subscriptionExpiryDate'] ?? '';
+          if (expStr.isNotEmpty) {
+            try {
+              _subExpiry = DateTime.parse(expStr);
+            } catch (_) {}
+          }
+
+          final cat = data['createdAt'];
+          if (cat != null) {
+            _subCreatedAt = (cat as dynamic).toDate();
+          }
         }
       }
     } catch (e) {
-      debugPrint('Load subscription error: $e');
+      debugPrint('Load error: $e');
     }
-
     setState(() => _isLoading = false);
   }
 
-  // ── Submit new subscription ───────────────────
+  // ── Submit ────────────────────────────────
   Future<void> _submit() async {
-    if (_txCtrl.text.trim().isEmpty) {
-      _showError('ٹرانزیکشن ID درج کریں');
-      return;
-    }
-
-    // ✅ Double check — koi pending/active nahi
-    if (_subStatus == 'pending' || _subStatus == 'active') {
-      _showError('آپ کی سبسکرپشن پہلے سے موجود ہے');
-      return;
-    }
-
-    setState(() => _isSubmitting = true);
+    if (_submitLock || _isSubmitting) return;
+    _submitLock = true;
 
     try {
+      if (_txCtrl.text.trim().isEmpty) {
+        _showError('ٹرانزیکشن ID درج کریں');
+        return;
+      }
+
+      if (_subStatus == 'pending' || _subStatus == 'active') {
+        _showError('آپ کی درخواست پہلے سے موجود ہے');
+        return;
+      }
+
+      setState(() => _isSubmitting = true);
+
+      // Firestore check before submit
+      final existing = await FirebaseFirestore.instance
+          .collection('subscriptions')
+          .where('userId', isEqualTo: _userId)
+          .where('status', whereIn: ['pending', 'active'])
+          .limit(1)
+          .get();
+
+      if (existing.docs.isNotEmpty) {
+        setState(() {
+          _subStatus = existing.docs.first.data()['status'];
+          _subDocId = existing.docs.first.id;
+          _isSubmitting = false;
+        });
+        _showError('آپ کی درخواست پہلے سے موجود ہے');
+        return;
+      }
+
       final prefs = await SharedPreferences.getInstance();
       final phone = prefs.getString('phoneNumber') ?? '';
 
-      // Upload receipt if selected
+      // Upload receipt
       String receiptUrl = '';
       if (_receiptFile != null) {
         setState(() => _uploadProgress = 0);
@@ -134,7 +180,22 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         receiptUrl = url ?? '';
       }
 
-      // ✅ Create ONE subscription document
+      // Final double check
+      final check2 = await FirebaseFirestore.instance
+          .collection('subscriptions')
+          .where('userId', isEqualTo: _userId)
+          .where('status', whereIn: ['pending', 'active'])
+          .limit(1)
+          .get();
+
+      if (check2.docs.isNotEmpty) {
+        setState(() => _isSubmitting = false);
+        _showError('درخواست پہلے سے جمع ہو چکی ہے');
+        await _loadData();
+        return;
+      }
+
+      // Submit
       await FirebaseFirestore.instance.collection('subscriptions').add({
         'userId': _userId,
         'phone': phone,
@@ -146,29 +207,105 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      // Reload data
       await _loadData();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              '✅ درخواست بھیج دی گئی — ایڈمن منظور کرے گا',
-              textDirection: TextDirection.rtl,
-            ),
-            backgroundColor: AppTheme.primaryGreen,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
+        _showSuccessSubmitDialog();
       }
     } catch (e) {
       _showError(e.toString());
+    } finally {
+      _submitLock = false;
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
     }
+  }
 
-    setState(() => _isSubmitting = false);
+  // ── Success Submit Dialog ─────────────────
+  void _showSuccessSubmitDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withValues(alpha: 0.6),
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: _green.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.check_circle_outline,
+                  color: _green,
+                  size: 44,
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'درخواست بھیج دی گئی!',
+                style: TextStyle(
+                  fontFamily: 'Nastaleeq',
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: _green,
+                  height: 1.8,
+                ),
+                textDirection: TextDirection.rtl,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'ایڈمن آپ کی ادائیگی چیک کر کے 24-48 گھنٹوں میں منظور کرے گا',
+                style: TextStyle(
+                  fontFamily: 'Nastaleeq',
+                  fontSize: 14,
+                  color: AppTheme.textGrey,
+                  height: 1.8,
+                ),
+                textDirection: TextDirection.rtl,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _green,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: const Text(
+                    'ٹھیک ہے',
+                    style: TextStyle(
+                      fontFamily: 'Nastaleeq',
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      height: 1.8,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showError(String msg) {
@@ -187,18 +324,18 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     );
   }
 
+  // ── Build ─────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
+      backgroundColor: const Color(0xFFF5FAF6),
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          // ── Header ──────────────────────────
           SliverAppBar(
             expandedHeight: 120,
             pinned: true,
-            backgroundColor: const Color(0xFF6A1B9A),
+            backgroundColor: _darkGreen,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.white),
               onPressed: () => Navigator.pop(context),
@@ -207,10 +344,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               background: Container(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [
-                      Color(0xFF4A0080),
-                      Color(0xFF6A1B9A),
-                    ],
+                    colors: [_darkGreen, _green],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -223,9 +357,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                         const Icon(
                           Icons.workspace_premium,
                           color: Colors.amber,
-                          size: 32,
+                          size: 30,
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 4),
                         const Text(
                           'سبسکرپشن',
                           style: TextStyle(
@@ -241,8 +375,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                           'ماہانہ PKR 2,000',
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.white.withValues(alpha: 0.8),
-                            height: 1.4,
+                            color: Colors.white.withValues(alpha: 0.85),
                           ),
                         ),
                       ],
@@ -252,15 +385,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               ),
             ),
           ),
-
-          // ── Content ─────────────────────────
           SliverToBoxAdapter(
             child: _isLoading
                 ? const Padding(
-                    padding: EdgeInsets.all(60),
+                    padding: EdgeInsets.all(80),
                     child: Center(
                       child: CircularProgressIndicator(
-                        color: Color(0xFF6A1B9A),
+                        color: _green,
                       ),
                     ),
                   )
@@ -275,118 +406,457 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   }
 
   Widget _buildContent() {
-    // ── ACTIVE ──────────────────────────────────
+    // ── ACTIVE ────────────────────────────────
     if (_subStatus == 'active') {
-      return _StatusCard(
-        icon: Icons.verified,
-        iconColor: AppTheme.primaryGreen,
-        bgColor: AppTheme.primaryGreen.withValues(alpha: 0.06),
-        borderColor: AppTheme.primaryGreen.withValues(alpha: 0.3),
-        title: 'سبسکرپشن فعال ہے! ✅',
-        subtitle: _subExpiry != null
-            ? 'میعاد: ${_subExpiry!.day}/${_subExpiry!.month}/${_subExpiry!.year}'
-            : 'آپ کی سبسکرپشن فعال ہے',
-        statusLabel: 'فعال',
-        statusColor: AppTheme.primaryGreen,
-        extra: Column(
-          children: [
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryGreen.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.check_circle,
-                    color: AppTheme.primaryGreen,
-                    size: 16,
-                  ),
-                  SizedBox(width: 8),
-                  Text(
-                    'تمام سہولیات دستیاب ہیں',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: AppTheme.primaryGreen,
-                      fontWeight: FontWeight.bold,
-                      height: 1.5,
-                    ),
-                    textDirection: TextDirection.rtl,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
+      return _buildActiveCard();
     }
 
-    // ── PENDING ──────────────────────────────────
+    // ── PENDING ───────────────────────────────
     if (_subStatus == 'pending') {
-      return _StatusCard(
-        icon: Icons.hourglass_top,
-        iconColor: Colors.orange,
-        bgColor: Colors.orange.withValues(alpha: 0.06),
-        borderColor: Colors.orange.withValues(alpha: 0.3),
-        title: 'درخواست زیر غور ہے',
-        subtitle: _subCreatedAt != null
-            ? 'بھیجی گئی: ${_subCreatedAt!.day}/${_subCreatedAt!.month}/${_subCreatedAt!.year}'
-            : 'آپ کی درخواست موصول ہو گئی',
-        statusLabel: 'زیر التواء',
-        statusColor: Colors.orange,
-        extra: Column(
-          children: [
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.orange.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Column(
-                children: [
-                  Text(
-                    'ایڈمن آپ کی درخواست چیک کر رہا ہے',
-                    style: TextStyle(
-                      fontFamily: 'Nastaleeq',
-                      fontSize: 14,
-                      color: Colors.orange,
-                      height: 1.8,
-                    ),
-                    textDirection: TextDirection.rtl,
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    '24-48 گھنٹوں میں منظور ہو جائے گی',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.orange,
-                      height: 1.5,
-                    ),
-                    textDirection: TextDirection.rtl,
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
+      return _buildPendingCard();
     }
 
-    // ── REJECTED — Show form again ────────────────
-    // ── NO SUBSCRIPTION or REJECTED — Show Form ──
+    // ── FORM ──────────────────────────────────
+    return _buildForm();
+  }
+
+  // ── Active Card ───────────────────────────
+  Widget _buildActiveCard() {
+    final expDay = _subExpiry?.day ?? '';
+    final expMonth = _subExpiry?.month ?? '';
+    final expYear = _subExpiry?.year ?? '';
+
+    return Column(
+      children: [
+        // Green verified banner
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [_darkGreen, _green],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: _green.withValues(alpha: 0.3),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              const Icon(
+                Icons.verified,
+                color: Colors.white,
+                size: 56,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _userName.isNotEmpty
+                    ? 'مبارک ہو، $_userName!'
+                    : 'سبسکرپشن فعال ہے',
+                style: const TextStyle(
+                  fontFamily: 'Nastaleeq',
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  height: 1.8,
+                ),
+                textDirection: TextDirection.rtl,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'آپ کی سبسکرپشن فعال ہے',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white,
+                  height: 1.5,
+                ),
+                textDirection: TextDirection.rtl,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Expiry card
+        if (_subExpiry != null)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: _green.withValues(alpha: 0.2),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Expiry date
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$expDay/$expMonth/$expYear',
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: _green,
+                      ),
+                    ),
+                    Text(
+                      'میعاد ختم',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade500,
+                        height: 1.4,
+                      ),
+                      textDirection: TextDirection.rtl,
+                    ),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _green.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'فعال',
+                        style: TextStyle(
+                          fontFamily: 'Nastaleeq',
+                          fontSize: 14,
+                          color: _green,
+                          fontWeight: FontWeight.bold,
+                          height: 1.6,
+                        ),
+                        textDirection: TextDirection.rtl,
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(
+                        Icons.circle,
+                        color: _green,
+                        size: 8,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 16),
+
+        // Features list
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              const Text(
+                'آپ کو یہ سہولیات مل رہی ہیں',
+                style: TextStyle(
+                  fontFamily: 'Nastaleeq',
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textDark,
+                  height: 1.8,
+                ),
+                textDirection: TextDirection.rtl,
+              ),
+              const SizedBox(height: 12),
+              _featureRow('کسانوں سے رابطہ'),
+              _featureRow('بزنس پیج'),
+              _featureRow('آرڈر مینجمنٹ'),
+              _featureRow('پروڈکٹ لسٹنگ'),
+              _featureRow('ترجیحی سپورٹ'),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _featureRow(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Text(
+            text,
+            style: const TextStyle(
+              fontFamily: 'Nastaleeq',
+              fontSize: 14,
+              color: AppTheme.textDark,
+              height: 1.6,
+            ),
+            textDirection: TextDirection.rtl,
+          ),
+          const SizedBox(width: 10),
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: _green.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.check,
+              color: _green,
+              size: 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Pending Card ──────────────────────────
+  Widget _buildPendingCard() {
+    return Column(
+      children: [
+        // Status banner
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: Colors.orange.withValues(alpha: 0.3),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.orange.withValues(alpha: 0.08),
+                blurRadius: 16,
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.hourglass_top_rounded,
+                  color: Colors.orange,
+                  size: 40,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'زیر التواء',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.orange,
+                    fontWeight: FontWeight.bold,
+                    height: 1.4,
+                  ),
+                  textDirection: TextDirection.rtl,
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'درخواست زیر غور ہے',
+                style: TextStyle(
+                  fontFamily: 'Nastaleeq',
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textDark,
+                  height: 1.8,
+                ),
+                textDirection: TextDirection.rtl,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'ایڈمن آپ کی ادائیگی چیک کر رہا ہے',
+                style: TextStyle(
+                  fontFamily: 'Nastaleeq',
+                  fontSize: 14,
+                  color: AppTheme.textGrey,
+                  height: 1.8,
+                ),
+                textDirection: TextDirection.rtl,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Submitted info
+        if (_subCreatedAt != null)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${_subCreatedAt!.day}/${_subCreatedAt!.month}/${_subCreatedAt!.year}',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Text(
+                  'درخواست کی تاریخ',
+                  style: TextStyle(
+                    fontFamily: 'Nastaleeq',
+                    fontSize: 14,
+                    color: AppTheme.textGrey,
+                    height: 1.6,
+                  ),
+                  textDirection: TextDirection.rtl,
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 16),
+
+        // Timeline
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              const Text(
+                'اگلے مراحل',
+                style: TextStyle(
+                  fontFamily: 'Nastaleeq',
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textDark,
+                  height: 1.8,
+                ),
+                textDirection: TextDirection.rtl,
+              ),
+              const SizedBox(height: 14),
+              _timelineStep(
+                '1',
+                'درخواست موصول',
+                true,
+                Colors.orange,
+              ),
+              _timelineStep(
+                '2',
+                'ادائیگی کی تصدیق',
+                false,
+                Colors.orange,
+              ),
+              _timelineStep(
+                '3',
+                'سبسکرپشن فعال',
+                false,
+                _green,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _timelineStep(
+    String num,
+    String text,
+    bool done,
+    Color color,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Text(
+            text,
+            style: TextStyle(
+              fontFamily: 'Nastaleeq',
+              fontSize: 14,
+              color: done ? AppTheme.textDark : Colors.grey.shade400,
+              fontWeight: done ? FontWeight.bold : FontWeight.normal,
+              height: 1.6,
+            ),
+            textDirection: TextDirection.rtl,
+          ),
+          const SizedBox(width: 10),
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color:
+                  done ? color.withValues(alpha: 0.15) : Colors.grey.shade100,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: done ? color : Colors.grey.shade300,
+                width: 1.5,
+              ),
+            ),
+            child: Center(
+              child: done
+                  ? Icon(Icons.check, color: color, size: 14)
+                  : Text(
+                      num,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade400,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Form ──────────────────────────────────
+  Widget _buildForm() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Rejected notice
-        if (_subStatus == 'rejected')
+        if (_subStatus == 'rejected') ...[
           Container(
-            margin: const EdgeInsets.only(bottom: 16),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: Colors.red.withValues(alpha: 0.06),
@@ -397,11 +867,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             ),
             child: const Column(
               children: [
-                Icon(
-                  Icons.cancel_outlined,
-                  color: Colors.red,
-                  size: 32,
-                ),
+                Icon(Icons.cancel_outlined, color: Colors.red, size: 32),
                 SizedBox(height: 8),
                 Text(
                   'پچھلی درخواست مسترد ہوئی',
@@ -428,16 +894,21 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 16),
+        ],
 
-        // ── Payment Method Card (matches reference UI) ──
+        // ── Step 1: Payment ────────────────────
+        _stepHeader('1', 'ادائیگی کریں'),
+        const SizedBox(height: 12),
+
         Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
+                color: Colors.black.withValues(alpha: 0.04),
                 blurRadius: 12,
               ),
             ],
@@ -445,97 +916,119 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              const Text(
-                'ادائیگی کریں',
-                style: TextStyle(
-                  fontFamily: 'Nastaleeq',
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textDark,
-                  height: 1.8,
-                ),
-                textDirection: TextDirection.rtl,
+              // Account title
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        _accountTitle,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
+                      const Text(
+                        'اکاؤنٹ ٹائٹل',
+                        style: TextStyle(
+                          fontFamily: 'Nastaleeq',
+                          fontSize: 11,
+                          color: AppTheme.textGrey,
+                          height: 1.6,
+                        ),
+                        textDirection: TextDirection.rtl,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 10),
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: _green.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.person_outline,
+                      color: _green,
+                      size: 20,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
+              const Divider(height: 1),
+              const SizedBox(height: 14),
 
               // JazzCash
-              _PaymentMethodTile(
+              _PaymentTile(
                 title: 'JazzCash',
-                number: _jazzCashNumber,
+                number: _jazz,
                 iconBg: const Color(0xFFE8272E),
-                iconWidget: const Text(
-                  'JC',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
+                iconLabel: 'JC',
                 selected: _selectedMethod == 'jazzcash',
                 onTap: () => setState(() => _selectedMethod = 'jazzcash'),
               ),
               const SizedBox(height: 10),
 
               // EasyPaisa
-              _PaymentMethodTile(
+              _PaymentTile(
                 title: 'EasyPaisa',
-                number: _easyPaisaNumber,
+                number: _easy,
                 iconBg: const Color(0xFF1BA146),
-                iconWidget: const Icon(
-                  Icons.account_balance_wallet,
-                  color: Colors.white,
-                  size: 18,
-                ),
+                iconIcon: Icons.account_balance_wallet,
                 selected: _selectedMethod == 'easypaisa',
                 onTap: () => setState(() => _selectedMethod = 'easypaisa'),
               ),
               const SizedBox(height: 10),
 
-              // Bank Transfer
-              _PaymentMethodTile(
-                title: 'بینک ٹرانسفر',
-                subtitle: _bankName,
-                number: _bankAccountNumber,
-                iconBg: const Color(0xFF6A1B9A),
-                iconWidget: const Icon(
-                  Icons.account_balance,
-                  color: Colors.white,
-                  size: 18,
-                ),
+              // Bank
+              _PaymentTile(
+                title: 'بینک ٹرانسفر • $_bankName',
+                number: _bank,
+                iconBg: _darkGreen,
+                iconIcon: Icons.account_balance,
                 selected: _selectedMethod == 'bank',
                 onTap: () => setState(() => _selectedMethod = 'bank'),
               ),
               const SizedBox(height: 14),
 
-              // Amount row
+              // Amount
               Container(
-                width: double.infinity,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
                   vertical: 14,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAF8),
+                  gradient: LinearGradient(
+                    colors: [
+                      _darkGreen,
+                      _green,
+                    ],
+                  ),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppTheme.borderLight),
                 ),
-                child: Row(
+                child: const Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: const [
+                  children: [
                     Text(
                       'PKR 2,000',
                       style: TextStyle(
-                        fontSize: 15,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: AppTheme.textDark,
+                        color: Colors.white,
                       ),
                     ),
                     Text(
-                      'رقم',
+                      'کل رقم — ماہانہ',
                       style: TextStyle(
+                        fontFamily: 'Nastaleeq',
                         fontSize: 14,
-                        color: AppTheme.textGrey,
-                        height: 1.4,
+                        color: Colors.white,
+                        height: 1.6,
                       ),
                       textDirection: TextDirection.rtl,
                     ),
@@ -545,17 +1038,20 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 24),
 
-        // ── Form Card ─────────────────────────
+        // ── Step 2: Transaction ID ─────────────
+        _stepHeader('2', 'ٹرانزیکشن ID درج کریں'),
+        const SizedBox(height: 12),
+
         Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
+                color: Colors.black.withValues(alpha: 0.04),
                 blurRadius: 12,
               ),
             ],
@@ -564,164 +1060,231 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               const Text(
-                'ادائیگی کی تصدیق',
+                'ادائیگی کے بعد ملنے والا نمبر درج کریں',
                 style: TextStyle(
                   fontFamily: 'Nastaleeq',
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textDark,
+                  fontSize: 13,
+                  color: AppTheme.textGrey,
                   height: 1.8,
                 ),
                 textDirection: TextDirection.rtl,
               ),
-              const SizedBox(height: 16),
-
-              // Transaction ID
-              const Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  'ٹرانزیکشن ID *',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textDark,
-                    height: 1.5,
-                  ),
-                  textDirection: TextDirection.rtl,
-                ),
-              ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               TextField(
                 controller: _txCtrl,
-                textAlign: TextAlign.right,
-                textDirection: TextDirection.rtl,
-                style: const TextStyle(fontSize: 15),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 2,
+                ),
                 decoration: InputDecoration(
-                  hintText: 'مثال: TXN123456789',
-                  hintTextDirection: TextDirection.rtl,
-                  hintStyle: const TextStyle(
-                    color: AppTheme.textGrey,
-                    fontSize: 14,
+                  hintText: 'TXN123456789',
+                  hintStyle: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey.shade300,
+                    letterSpacing: 2,
                   ),
                   prefixIcon: const Icon(
-                    Icons.receipt_outlined,
-                    color: Color(0xFF6A1B9A),
+                    Icons.tag,
+                    color: _green,
                     size: 20,
                   ),
                   filled: true,
-                  fillColor: const Color(0xFFF8FAF8),
+                  fillColor: const Color(0xFFF2FBF4),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: AppTheme.borderLight),
+                    borderSide: BorderSide.none,
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: AppTheme.borderLight),
+                    borderSide: BorderSide(
+                      color: Colors.grey.shade200,
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
                     borderSide: const BorderSide(
-                      color: Color(0xFF6A1B9A),
-                      width: 1.5,
+                      color: _green,
+                      width: 2,
                     ),
                   ),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
-                    vertical: 14,
+                    vertical: 16,
                   ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Receipt upload
-              const Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  'رسید کی تصویر (اختیاری)',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textDark,
-                    height: 1.5,
-                  ),
-                  textDirection: TextDirection.rtl,
-                ),
-              ),
-              const SizedBox(height: 8),
-              GestureDetector(
-                onTap: () async {
-                  final picked = await _picker.pickImage(
-                    source: ImageSource.gallery,
-                  );
-                  if (picked != null) {
-                    setState(() => _receiptFile = File(picked.path));
-                  }
-                },
-                child: Container(
-                  height: 110,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF6A1B9A).withValues(alpha: 0.04),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: _receiptFile != null
-                          ? const Color(0xFF6A1B9A)
-                          : AppTheme.borderLight,
-                      width: 1.5,
-                    ),
-                  ),
-                  child: _receiptFile != null
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(13),
-                          child: Image.file(
-                            _receiptFile!,
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                          ),
-                        )
-                      : const Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.add_photo_alternate_outlined,
-                              color: Color(0xFF6A1B9A),
-                              size: 32,
-                            ),
-                            SizedBox(height: 6),
-                            Text(
-                              'رسید کی تصویر شامل کریں',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: AppTheme.textGrey,
-                                height: 1.5,
-                              ),
-                              textDirection: TextDirection.rtl,
-                            ),
-                          ],
-                        ),
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
 
-        // ── Submit Button ──────────────────────
+        // ── Step 3: Receipt ────────────────────
+        _stepHeader('3', 'رسید کی تصویر (اختیاری)'),
+        const SizedBox(height: 12),
+
+        GestureDetector(
+          onTap: () async {
+            final picked = await _picker.pickImage(
+              source: ImageSource.gallery,
+              imageQuality: 80,
+            );
+            if (picked != null) {
+              setState(() => _receiptFile = File(picked.path));
+            }
+          },
+          child: Container(
+            width: double.infinity,
+            // ✅ Fixed height — image sai dikhegi
+            height: _receiptFile != null ? 220 : 140,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: _receiptFile != null ? _green : Colors.grey.shade200,
+                width: _receiptFile != null ? 2 : 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 12,
+                ),
+              ],
+            ),
+            child: _receiptFile != null
+                ? Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(19),
+                        child: Image.file(
+                          _receiptFile!,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      // Change button
+                      Positioned(
+                        bottom: 10,
+                        right: 10,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.edit,
+                                color: Colors.white,
+                                size: 13,
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                'تبدیل کریں',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  height: 1.4,
+                                ),
+                                textDirection: TextDirection.rtl,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      // Remove button
+                      Positioned(
+                        top: 10,
+                        left: 10,
+                        child: GestureDetector(
+                          onTap: () => setState(() => _receiptFile = null),
+                          child: Container(
+                            width: 30,
+                            height: 30,
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.close,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          color: _green.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.add_photo_alternate_outlined,
+                          color: _green,
+                          size: 26,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'رسید کی تصویر شامل کریں',
+                        style: TextStyle(
+                          fontFamily: 'Nastaleeq',
+                          fontSize: 14,
+                          color: AppTheme.textDark,
+                          height: 1.6,
+                        ),
+                        textDirection: TextDirection.rtl,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'گیلری سے منتخب کریں',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade400,
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        ),
+        const SizedBox(height: 28),
+
+        // ── Submit ─────────────────────────────
         _isSubmitting
             ? Column(
                 children: [
-                  LinearProgressIndicator(
-                    value: _uploadProgress > 0 ? _uploadProgress : null,
-                    color: const Color(0xFF6A1B9A),
-                    backgroundColor: Colors.grey.shade200,
-                    minHeight: 4,
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: LinearProgressIndicator(
+                      value: _uploadProgress > 0 ? _uploadProgress : null,
+                      color: _green,
+                      backgroundColor: Colors.grey.shade200,
+                      minHeight: 6,
+                    ),
                   ),
                   const SizedBox(height: 12),
-                  const Text(
-                    'درخواست بھیجی جا رہی ہے...',
-                    style: TextStyle(
+                  Text(
+                    _uploadProgress > 0
+                        ? 'رسید اپلوڈ ہو رہی ہے... ${(_uploadProgress * 100).toInt()}%'
+                        : 'درخواست بھیجی جا رہی ہے...',
+                    style: const TextStyle(
+                      fontFamily: 'Nastaleeq',
+                      fontSize: 14,
                       color: AppTheme.textGrey,
-                      fontSize: 13,
-                      height: 1.5,
+                      height: 1.8,
                     ),
                     textDirection: TextDirection.rtl,
                     textAlign: TextAlign.center,
@@ -731,44 +1294,49 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             : Container(
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [
-                      Color(0xFF4A0080),
-                      Color(0xFF6A1B9A),
-                    ],
+                    colors: [_darkGreen, _green],
                   ),
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF6A1B9A).withValues(alpha: 0.4),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
+                      color: _green.withValues(alpha: 0.35),
+                      blurRadius: 14,
+                      offset: const Offset(0, 5),
                     ),
                   ],
                 ),
-                child: ElevatedButton.icon(
-                  onPressed: _submit,
+                child: ElevatedButton(
+                  onPressed: (_isSubmitting || _submitLock) ? null : _submit,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.transparent,
                     shadowColor: Colors.transparent,
+                    disabledBackgroundColor: Colors.transparent,
                     padding: const EdgeInsets.symmetric(vertical: 18),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  icon: const Icon(
-                    Icons.send_outlined,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                  label: const Text(
-                    'درخواست بھیجیں',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      height: 1.5,
-                    ),
-                    textDirection: TextDirection.rtl,
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.send_outlined,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                      SizedBox(width: 10),
+                      Text(
+                        'درخواست بھیجیں',
+                        style: TextStyle(
+                          fontFamily: 'Nastaleeq',
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          height: 1.8,
+                        ),
+                        textDirection: TextDirection.rtl,
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -776,137 +1344,68 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       ],
     );
   }
-}
 
-// ── Status Card Widget ────────────────────────────
-class _StatusCard extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final Color bgColor;
-  final Color borderColor;
-  final String title;
-  final String subtitle;
-  final String statusLabel;
-  final Color statusColor;
-  final Widget? extra;
-
-  const _StatusCard({
-    required this.icon,
-    required this.iconColor,
-    required this.bgColor,
-    required this.borderColor,
-    required this.title,
-    required this.subtitle,
-    required this.statusLabel,
-    required this.statusColor,
-    this.extra,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: borderColor),
-        boxShadow: [
-          BoxShadow(
-            color: iconColor.withValues(alpha: 0.08),
-            blurRadius: 12,
+  // ── Step Header ───────────────────────────
+  Widget _stepHeader(String num, String title) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontFamily: 'Nastaleeq',
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.textDark,
+            height: 1.8,
           ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // Status badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-            decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(20),
-            ),
+          textDirection: TextDirection.rtl,
+        ),
+        const SizedBox(width: 10),
+        Container(
+          width: 28,
+          height: 28,
+          decoration: const BoxDecoration(
+            color: _green,
+            shape: BoxShape.circle,
+          ),
+          child: Center(
             child: Text(
-              statusLabel,
-              style: TextStyle(
-                fontSize: 12,
-                color: statusColor,
+              num,
+              style: const TextStyle(
+                fontSize: 14,
                 fontWeight: FontWeight.bold,
-                height: 1.4,
+                color: Colors.white,
               ),
-              textDirection: TextDirection.rtl,
             ),
           ),
-          const SizedBox(height: 20),
-
-          // Icon
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              icon,
-              color: iconColor,
-              size: 36,
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Title
-          Text(
-            title,
-            style: TextStyle(
-              fontFamily: 'Nastaleeq',
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: iconColor,
-              height: 1.8,
-            ),
-            textDirection: TextDirection.rtl,
-            textAlign: TextAlign.center,
-          ),
-
-          // Subtitle
-          Text(
-            subtitle,
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey.shade600,
-              height: 1.5,
-            ),
-            textDirection: TextDirection.rtl,
-            textAlign: TextAlign.center,
-          ),
-
-          if (extra != null) extra!,
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-// ── Payment Method Tile (selectable, shows full number) ──
-class _PaymentMethodTile extends StatelessWidget {
+// ── Payment Tile ──────────────────────────────────
+class _PaymentTile extends StatelessWidget {
   final String title;
-  final String? subtitle;
   final String number;
   final Color iconBg;
-  final Widget iconWidget;
+  final String? iconLabel;
+  final IconData? iconIcon;
   final bool selected;
   final VoidCallback onTap;
 
-  const _PaymentMethodTile({
+  const _PaymentTile({
     required this.title,
-    this.subtitle,
     required this.number,
     required this.iconBg,
-    required this.iconWidget,
+    this.iconLabel,
+    this.iconIcon,
     required this.selected,
     required this.onTap,
   });
+
+  static const _green = Color(0xFF1B8A3D);
 
   @override
   Widget build(BuildContext context) {
@@ -914,28 +1413,29 @@ class _PaymentMethodTile extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: selected ? _green.withValues(alpha: 0.04) : Colors.white,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: selected ? const Color(0xFF6A1B9A) : AppTheme.borderLight,
+            color: selected ? _green : AppTheme.borderLight,
             width: selected ? 1.5 : 1,
           ),
         ),
         child: Row(
           children: [
-            // Selection indicator
+            // Radio
             Container(
               width: 22,
               height: 22,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: selected ? const Color(0xFF6A1B9A) : Colors.transparent,
+                color: selected ? _green : Colors.transparent,
                 border: Border.all(
-                  color:
-                      selected ? const Color(0xFF6A1B9A) : AppTheme.borderLight,
+                  color: selected ? _green : AppTheme.borderLight,
                   width: 1.5,
                 ),
               ),
@@ -945,7 +1445,7 @@ class _PaymentMethodTile extends StatelessWidget {
             ),
             const SizedBox(width: 12),
 
-            // Text (name + full number)
+            // Info
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -953,35 +1453,47 @@ class _PaymentMethodTile extends StatelessWidget {
                   Text(
                     number,
                     style: const TextStyle(
-                      fontSize: 15,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
                       color: AppTheme.textDark,
-                      letterSpacing: 0.5,
+                      letterSpacing: 1,
                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    subtitle != null ? '$title • $subtitle' : title,
+                    title,
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.grey.shade600,
+                      color: Colors.grey.shade500,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 10),
 
             // Icon badge
             Container(
-              width: 34,
-              height: 34,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
                 color: iconBg,
                 borderRadius: BorderRadius.circular(10),
               ),
               alignment: Alignment.center,
-              child: iconWidget,
+              child: iconLabel != null
+                  ? Text(
+                      iconLabel!,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    )
+                  : Icon(
+                      iconIcon,
+                      color: Colors.white,
+                      size: 18,
+                    ),
             ),
           ],
         ),

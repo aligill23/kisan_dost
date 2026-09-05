@@ -337,6 +337,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   // ─────────────────────────────────────────────────────────────
   // SPLASH UI — full-bleed background image (assets/images/bg.png)
+  // Container/card removed around text; text shifted up; kept green.
   // ─────────────────────────────────────────────────────────────
 
   @override
@@ -351,99 +352,108 @@ class _SplashScreenState extends State<SplashScreen>
             fit: BoxFit.cover,
           ),
 
-          // Centered branding
+          // Branding — positioned higher (shifted up), text sits
+          // directly on the background (no card container),
+          // all text kept in green tones.
           SafeArea(
-            child: Center(
+            child: Align(
+              alignment: const Alignment(0, -0.72),
               child: FadeTransition(
                 opacity: _fade,
                 child: ScaleTransition(
                   scale: _scale,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 36),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Logo
-                        Image.asset(
-                          'assets/images/logo.png',
-                          width: 150,
-                          height: 150,
-                          fit: BoxFit.contain,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Logo
+                      Image.asset(
+                        'assets/images/logo.png',
+                        width: 130,
+                        height: 130,
+                        fit: BoxFit.contain,
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // Text block, no container/card wrapper
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 36),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Urdu app name
+                            const Text(
+                              'کسان دوست',
+                              style: TextStyle(
+                                fontFamily: 'Nastaleeq',
+                                fontSize: 30,
+                                fontWeight: FontWeight.bold,
+                                color: _darkGreen,
+                                height: 1.3,
+                              ),
+                              textDirection: TextDirection.rtl,
+                              textAlign: TextAlign.center,
+                            ),
+
+                            const SizedBox(height: 8),
+
+                            // Divider
+                            Container(
+                              width: 50,
+                              height: 2,
+                              color: _primaryGreen.withValues(alpha: 0.6),
+                            ),
+
+                            const SizedBox(height: 10),
+
+                            // English tagline
+                            const Text(
+                              'BUY. SELL. GROW.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontFamily: 'Inter',
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: _darkGreen,
+                                height: 1.3,
+                              ),
+                            ),
+
+                            const SizedBox(height: 8),
+
+                            // Urdu tagline
+                            const Text(
+                              'ڈیجیٹل زراعت کی جانب اہم قدم',
+                              style: TextStyle(
+                                fontFamily: 'Nastaleeq',
+                                fontSize: 17,
+                                fontWeight: FontWeight.w600,
+                                color: _primaryGreen,
+                                height: 1.4,
+                              ),
+                              textDirection: TextDirection.rtl,
+                              textAlign: TextAlign.center,
+                            ),
+
+                            const SizedBox(height: 8),
+
+                            // Version
+                            Text(
+                              _appVersion.isEmpty
+                                  ? 'Version'
+                                  : 'Version $_appVersion',
+                              style: const TextStyle(
+                                fontFamily: 'Inter',
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: _darkGreen,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ],
                         ),
-
-                        const SizedBox(height: 18),
-
-                        // Urdu app name
-                        const Text(
-                          'کسان دوست',
-                          style: TextStyle(
-                            fontFamily: 'Nastaleeq',
-                            fontSize: 34,
-                            fontWeight: FontWeight.bold,
-                            color: _darkGreen,
-                            height: 1.6,
-                          ),
-                          textDirection: TextDirection.rtl,
-                          textAlign: TextAlign.center,
-                        ),
-
-                        const SizedBox(height: 14),
-
-                        // Divider
-                        Container(
-                          width: 60,
-                          height: 2,
-                          color: _primaryGreen.withValues(alpha: 0.4),
-                        ),
-
-                        const SizedBox(height: 18),
-
-                        // English tagline
-                        const Text(
-                          'Digital Marketplace for Farmers\n in Pakistan',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 17,
-                            fontWeight: FontWeight.w600,
-                            color: _darkGreen,
-                            height: 1.4,
-                          ),
-                        ),
-
-                        const SizedBox(height: 14),
-
-                        // Urdu tagline
-                        const Text(
-                          'پاکستان کے کسانوں کی ڈیجیٹل منڈی',
-                          style: TextStyle(
-                            fontFamily: 'Nastaleeq',
-                            fontSize: 20,
-                            fontWeight: FontWeight.w600,
-                            color: _primaryGreen,
-                            height: 1.8,
-                          ),
-                          textDirection: TextDirection.rtl,
-                          textAlign: TextAlign.center,
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        // Version
-                        Text(
-                          _appVersion.isEmpty
-                              ? 'Version'
-                              : 'Version $_appVersion',
-                          style: const TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: _primaryGreen,
-                            letterSpacing: 0.2,
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),

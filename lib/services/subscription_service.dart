@@ -1,5 +1,8 @@
+// subscription_service.dart replace karo:
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SubscriptionService {
@@ -7,80 +10,117 @@ class SubscriptionService {
 
   static Future<bool> isSubscriptionActive() async {
     try {
-      // ✅ Step 1 — Firebase Auth UID lo
       final uid = FirebaseAuth.instance.currentUser?.uid;
-
-      // ✅ Step 2 — SharedPrefs se bhi lo fallback
       final prefs = await SharedPreferences.getInstance();
       final prefsUserId = prefs.getString('userId') ?? '';
-
-      // Use jo bhi available ho
       final userId = (uid != null && uid.isNotEmpty) ? uid : prefsUserId;
 
+      debugPrint('🔍 Checking subscription for: $userId');
+
       if (userId.isEmpty) {
+        debugPrint('❌ userId empty');
         return false;
       }
 
-      // ✅ Step 3 — PEHLE user document check karo
-      // Yeh fast hai aur rules issue nahi
+      // ── Step 1: Users doc check ──────────────
       final userDoc = await _db.collection('users').doc(userId).get();
+
+      debugPrint('📄 Users doc exists: ${userDoc.exists}');
 
       if (userDoc.exists) {
         final data = userDoc.data()!;
         final status = data['subscriptionStatus'] ?? '';
         final expiry = data['subscriptionExpiry'];
 
+        debugPrint('📋 subscriptionStatus: "$status"');
+        debugPrint('📋 subscriptionExpiry: $expiry');
+        debugPrint('📋 expiry type: ${expiry?.runtimeType}');
+
         if (status == 'active') {
-          // Expiry check karo
-          if (expiry != null) {
-            final expiryDate = (expiry as Timestamp).toDate();
-            if (DateTime.now().isBefore(expiryDate)) {
-              return true; // ✅ Active!
-            }
-            // Expired — update karo
-            await _db
-                .collection('users')
-                .doc(userId)
-                .update({'subscriptionStatus': 'expired'});
-            return false;
+          // ✅ No expiry = active
+          if (expiry == null) {
+            debugPrint('✅ Active — no expiry set');
+            return true;
           }
-          // Koi expiry nahi — active maano
-          return true;
+
+          // ✅ Handle both Timestamp and String
+          DateTime? expiryDate;
+
+          if (expiry is Timestamp) {
+            expiryDate = expiry.toDate();
+          } else if (expiry is String && expiry.isNotEmpty) {
+            try {
+              expiryDate = DateTime.parse(expiry);
+            } catch (_) {
+              debugPrint('⚠️ Cannot parse expiry string: $expiry');
+            }
+          }
+
+          debugPrint('📅 Expiry date: $expiryDate');
+          debugPrint('📅 Now: ${DateTime.now()}');
+
+          if (expiryDate == null) {
+            // Parse nahi hua — active maano
+            debugPrint('✅ Active — expiry unparseable');
+            return true;
+          }
+
+          if (DateTime.now().isBefore(expiryDate)) {
+            debugPrint('✅ Active — valid until $expiryDate');
+            return true;
+          }
+
+          // Expired
+          debugPrint('❌ Expired at $expiryDate');
+          await _db
+              .collection('users')
+              .doc(userId)
+              .update({'subscriptionStatus': 'expired'});
+          return false;
         }
+
+        debugPrint('❌ Status is not active: "$status"');
       }
 
-      // ✅ Step 4 — subscriptions collection bhi check
-      // (fallback)
-      try {
-        final subQuery = await _db
-            .collection('subscriptions')
-            .where('userId', isEqualTo: userId)
-            .where('status', isEqualTo: 'active')
-            .limit(1)
-            .get();
+      // ── Step 2: Subscriptions collection ─────
+      debugPrint('🔍 Checking subscriptions collection...');
 
-        if (subQuery.docs.isNotEmpty) {
-          // ✅ Subscription mili — user doc update karo
-          final subData = subQuery.docs.first.data();
-          final expiryStr = subData['subscriptionExpiryDate']?.toString() ?? '';
+      final subQuery = await _db
+          .collection('subscriptions')
+          .where('userId', isEqualTo: userId)
+          .where('status', isEqualTo: 'active')
+          .limit(1)
+          .get();
 
-          await _db.collection('users').doc(userId).update({
-            'subscriptionStatus': 'active',
-            if (expiryStr.isNotEmpty)
-              'subscriptionExpiry': Timestamp.fromDate(
-                DateTime.parse(expiryStr),
-              ),
-          });
+      debugPrint('📚 Subscriptions found: ${subQuery.docs.length}');
 
-          return true;
-        }
-      } catch (e) {
-        // Rules block kar sakti hain — ignore
+      if (subQuery.docs.isNotEmpty) {
+        final subData = subQuery.docs.first.data();
+        debugPrint('📋 Sub data: $subData');
+
+        final expiryStr = subData['subscriptionExpiryDate']?.toString() ?? '';
+
+        // ✅ Sync to users doc
+        await _db.collection('users').doc(userId).set({
+          'subscriptionStatus': 'active',
+          if (expiryStr.isNotEmpty)
+            'subscriptionExpiry': Timestamp.fromDate(
+              DateTime.parse(expiryStr),
+            ),
+        }, SetOptions(merge: true));
+
+        debugPrint('✅ Subscription active — synced!');
+        return true;
       }
 
+      debugPrint('❌ No active subscription found');
       return false;
-    } catch (e) {
-      return false;
+    } catch (e, stack) {
+      debugPrint('💥 SubscriptionService ERROR: $e');
+      debugPrint('Stack: $stack');
+      // ✅ Error pe false nahi — true return karo
+      // Taake subscription wale block na hon
+      return true;
     }
   }
 }

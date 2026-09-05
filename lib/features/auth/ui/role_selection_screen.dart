@@ -42,6 +42,16 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       'image': 'assets/images/dealer.png',
       'color': Color(0xFF6A1B9A),
     },
+    {
+      'role': 'agri_services',
+      'title': 'زرعی سروسز',
+      'titleEn': 'Agri Services',
+      'description': 'ٹریکٹر، ہارویسٹر یا دیگر سامان رینٹ پر دیں',
+      'descriptionEn': 'Rent tractors, harvesters or other equipment',
+      'image': 'assets/images/agri_services.png',
+      'color': Color(0xFFEF6C00),
+      'disabled': true,
+    },
   ];
 
   @override
@@ -122,16 +132,6 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                                 ),
                                 textDirection: TextDirection.rtl,
                               ),
-                              const SizedBox(width: 6),
-                              const Text(
-                                '(Kissan Dost)',
-                                style: TextStyle(
-                                  fontFamily: 'Inter',
-                                  fontSize: 12,
-                                  color: AppTheme.textGrey,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
                             ],
                           ),
                           const SizedBox(height: 12),
@@ -160,16 +160,6 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                                   textDirection: TextDirection.rtl,
                                   textAlign: TextAlign.center,
                                 ),
-                                Text(
-                                  'Select Your Role',
-                                  style: TextStyle(
-                                    fontFamily: 'Inter',
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.primaryGreen,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
                                 SizedBox(height: 6),
                                 Text(
                                   'اپنے مطابق کردار منتخب کریں اور کسان دوست کے ساتھ جڑیں',
@@ -179,17 +169,6 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                                     height: 1.6,
                                   ),
                                   textDirection: TextDirection.rtl,
-                                  textAlign: TextAlign.center,
-                                ),
-                                SizedBox(height: 2),
-                                Text(
-                                  'Choose the role that fits you and join Kissan Dost',
-                                  style: TextStyle(
-                                    fontFamily: 'Inter',
-                                    fontSize: 11,
-                                    color: AppTheme.textGrey,
-                                    height: 1.5,
-                                  ),
                                   textAlign: TextAlign.center,
                                 ),
                               ],
@@ -207,11 +186,15 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                     child: Column(
                       children: _roles.map((role) {
                         final isSelected = _selectedRole == role['role'];
+                        final isDisabled = role['disabled'] == true;
                         return _RoleCard(
                           role: role,
                           isSelected: isSelected,
-                          onTap: () => setState(
-                              () => _selectedRole = role['role'] as String),
+                          isDisabled: isDisabled,
+                          onTap: isDisabled
+                              ? null
+                              : () => setState(
+                                  () => _selectedRole = role['role'] as String),
                         );
                       }).toList(),
                     ),
@@ -270,16 +253,6 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                               size: 14,
                             ),
                           ],
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Your data will be kept safe and confidential',
-                          style: TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 10.5,
-                            color: AppTheme.primaryGreen,
-                          ),
-                          textAlign: TextAlign.center,
                         ),
                       ],
                     ),
@@ -342,16 +315,6 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                               ),
                               textDirection: TextDirection.rtl,
                             ),
-                            SizedBox(width: 6),
-                            Text(
-                              '(Continue)',
-                              style: TextStyle(
-                                fontFamily: 'Inter',
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
                             SizedBox(width: 8),
                             Icon(
                               Icons.arrow_back,
@@ -376,11 +339,13 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 class _RoleCard extends StatelessWidget {
   final Map<String, dynamic> role;
   final bool isSelected;
-  final VoidCallback onTap;
+  final bool isDisabled;
+  final VoidCallback? onTap;
 
   const _RoleCard({
     required this.role,
     required this.isSelected,
+    this.isDisabled = false,
     required this.onTap,
   });
 
@@ -390,126 +355,150 @@ class _RoleCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.only(bottom: 14),
-        decoration: BoxDecoration(
-          color: isSelected ? color.withValues(alpha: 0.03) : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected ? color : AppTheme.borderLight,
-            width: isSelected ? 2 : 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: isSelected
-                  ? color.withValues(alpha: 0.12)
-                  : Colors.black.withValues(alpha: 0.04),
-              blurRadius: isSelected ? 20 : 8,
-              offset: const Offset(0, 4),
+      child: Opacity(
+        opacity: isDisabled ? 0.55 : 1.0,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.only(bottom: 14),
+          decoration: BoxDecoration(
+            color: isSelected ? color.withValues(alpha: 0.03) : Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isSelected ? color : AppTheme.borderLight,
+              width: isSelected ? 2 : 1,
             ),
-          ],
-        ),
-        child: Row(
-          children: [
-            // Person Image
-            ClipRRect(
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(20),
-                bottomLeft: Radius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: isSelected
+                    ? color.withValues(alpha: 0.12)
+                    : Colors.black.withValues(alpha: 0.04),
+                blurRadius: isSelected ? 20 : 8,
+                offset: const Offset(0, 4),
               ),
-              child: Container(
-                width: 100,
-                height: 100,
-                child: Image.asset(
-                  role['image'] as String,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => Container(
-                    child: Icon(
-                      Icons.person,
-                      color: color,
-                      size: 48,
+            ],
+          ),
+          child: Stack(
+            children: [
+              Row(
+                children: [
+                  // Person Image
+                  ClipRRect(
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(20),
+                      bottomLeft: Radius.circular(20),
+                    ),
+                    child: Container(
+                      width: 100,
+                      height: 100,
+                      child: Image.asset(
+                        role['image'] as String,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => Container(
+                          child: Icon(
+                            Icons.person,
+                            color: color,
+                            size: 48,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // Content
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              Text(
+                                role['title'] as String,
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: isSelected ? color : AppTheme.textDark,
+                                  height: 1.5,
+                                ),
+                                textDirection: TextDirection.rtl,
+                              ),
+                              const SizedBox(width: 8),
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  color: isDisabled
+                                      ? AppTheme.textGrey
+                                      : (isSelected
+                                          ? color
+                                          : AppTheme.borderLight),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  isDisabled
+                                      ? Icons.lock_outline
+                                      : (isSelected
+                                          ? Icons.check
+                                          : Icons.arrow_back_ios_new),
+                                  color: isDisabled
+                                      ? Colors.white
+                                      : (isSelected
+                                          ? Colors.white
+                                          : AppTheme.textGrey),
+                                  size: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            role['description'] as String,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.textGrey,
+                              height: 1.5,
+                            ),
+                            textDirection: TextDirection.rtl,
+                            textAlign: TextAlign.right,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              // "Coming Soon" badge for disabled roles
+              if (isDisabled)
+                Positioned(
+                  top: 10,
+                  left: 10,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTheme.textGrey,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text(
+                      'جلد آرہا ہے',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                        height: 1.4,
+                      ),
+                      textDirection: TextDirection.rtl,
                     ),
                   ),
                 ),
-              ),
-            ),
-
-            // Content
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Text(
-                          role['title'] as String,
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: isSelected ? color : AppTheme.textDark,
-                            height: 1.5,
-                          ),
-                          textDirection: TextDirection.rtl,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '(${role['titleEn']})',
-                          style: TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: isSelected ? color : AppTheme.textGrey,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: isSelected ? color : AppTheme.borderLight,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            isSelected ? Icons.check : Icons.arrow_back_ios_new,
-                            color:
-                                isSelected ? Colors.white : AppTheme.textGrey,
-                            size: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      role['description'] as String,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.textGrey,
-                        height: 1.5,
-                      ),
-                      textDirection: TextDirection.rtl,
-                      textAlign: TextAlign.right,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      role['descriptionEn'] as String,
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 10.5,
-                        color: AppTheme.textGrey,
-                        height: 1.4,
-                      ),
-                      textAlign: TextAlign.right,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

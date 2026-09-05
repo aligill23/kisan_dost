@@ -45,39 +45,31 @@ class _LoginScreenState extends State<LoginScreen> {
   // ─────────────────────────────────────────────────────────────
 
   Future<void> _continue() async {
-    debugPrint('🔵 BUTTON PRESSED');
-
-    if (!_formKey.currentState!.validate()) {
-      debugPrint('🔴 VALIDATION FAILED');
-      return;
-    }
-
-    debugPrint('🟢 VALIDATION PASSED');
-
-    final confirmed = await _showDeviceWarningDialog();
-
-    debugPrint('🟡 Dialog result: $confirmed');
-
-    if (!confirmed) return;
+    if (!_formKey.currentState!.validate()) return;
 
     final authVM = context.read<AuthViewModel>();
-
     final phone = _phoneController.text.trim();
 
-    debugPrint('📞 Calling checkAndLogin with: $phone');
-
     final result = await authVM.checkAndLogin(phone);
-
-    debugPrint(' checkAndLogin result: $result');
 
     if (!mounted) return;
 
     switch (result) {
+      // ── Existing user — device check karo ────────
       case LoginResult.existingUser:
         final userId = authVM.userId ?? '';
 
-        final deviceResult = await authVM.checkDeviceSecurity(userId);
+        if (userId.isEmpty) {
+          context.go('/dashboard');
+          break;
+        }
 
+        // Warning dialog sirf existing user ke liye
+        final confirmed = await _showDeviceWarningDialog();
+        if (!confirmed) return;
+        if (!mounted) return;
+
+        final deviceResult = await authVM.checkDeviceSecurity(userId);
         if (!mounted) return;
 
         if (deviceResult == DeviceCheckResult.blockedDifferentDevice) {
@@ -89,14 +81,44 @@ class _LoginScreenState extends State<LoginScreen> {
           );
           return;
         }
-
         context.go('/dashboard');
         break;
 
+      // ── Existing dealer/arhti — device check ─────
+      case LoginResult.noBusinessProfile:
+        final userId = authVM.userId ?? '';
+
+        if (userId.isEmpty) {
+          context.go('/business-setup');
+          break;
+        }
+
+        final confirmed = await _showDeviceWarningDialog();
+        if (!confirmed) return;
+        if (!mounted) return;
+
+        final deviceResult = await authVM.checkDeviceSecurity(userId);
+        if (!mounted) return;
+
+        if (deviceResult == DeviceCheckResult.blockedDifferentDevice) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const DeviceBlockedScreen(),
+            ),
+          );
+          return;
+        }
+        context.go('/business-setup');
+        break;
+
+      // ── New user — NO device check ────────────────
+      // Seedha aage — device register hoga baad mein
       case LoginResult.newUser:
         context.go('/role-selection');
         break;
 
+      // ── Profile incomplete — NO device check ──────
       case LoginResult.noRole:
         context.go('/role-selection');
         break;
@@ -105,43 +127,22 @@ class _LoginScreenState extends State<LoginScreen> {
         context.go('/profile-setup');
         break;
 
-      case LoginResult.noBusinessProfile:
-        final userId = authVM.userId ?? '';
-
-        final deviceResult = await authVM.checkDeviceSecurity(userId);
-
-        if (!mounted) return;
-
-        if (deviceResult == DeviceCheckResult.blockedDifferentDevice) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const DeviceBlockedScreen(),
-            ),
-          );
-          return;
-        }
-
-        context.go('/business-setup');
-        break;
-
+      // ── Admin ──────────────────────────────────────
       case LoginResult.admin:
-        if (context.mounted) {
-          context.go('/dashboard');
-        }
+        context.go('/dashboard');
         break;
 
+      // ── Device blocked ─────────────────────────────
       case LoginResult.deviceAlreadyRegistered:
-        if (context.mounted) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const DeviceBlockedScreen(),
-            ),
-          );
-        }
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const DeviceBlockedScreen(),
+          ),
+        );
         break;
 
+      // ── Error ──────────────────────────────────────
       case LoginResult.error:
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -150,6 +151,10 @@ class _LoginScreenState extends State<LoginScreen> {
               textDirection: TextDirection.rtl,
             ),
             backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
         );
         break;
@@ -158,7 +163,6 @@ class _LoginScreenState extends State<LoginScreen> {
         break;
     }
   }
-
   // ─────────────────────────────────────────────────────────────
   // DEVICE WARNING DIALOG — RESTYLED
   // ─────────────────────────────────────────────────────────────

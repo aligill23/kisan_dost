@@ -176,25 +176,27 @@ class AuthViewModel extends ChangeNotifier {
   }
 
   // ── Main device check method ──────────────────────
+  // auth_viewmodel.dart mein replace karo:
+
   Future<DeviceCheckResult> checkDeviceSecurity(String userId) async {
     try {
       if (userId.isEmpty) {
-        debugPrint('❌ userId empty -skip check');
+        debugPrint('⚠️ userId empty — skip');
         return DeviceCheckResult.newDevice;
       }
 
       final currentDeviceId = await DeviceService.getDeviceFingerprint();
-      debugPrint('🔍 Current deviceId: $currentDeviceId');
+
+      debugPrint('🔍 Current device: $currentDeviceId');
 
       final userDoc = await FirebaseFirestore.instance
           .collection('users')
           .doc(userId)
           .get();
 
-      //  BUG FIX -doc exist nahi to
-      // register karo, warna skip ho jata tha
+      // ✅ Doc exist nahi — first time user
       if (!userDoc.exists) {
-        debugPrint('📄 Doc not found -registering');
+        debugPrint('📄 New user — registering device');
         await _registerDevice(userId, currentDeviceId);
         return DeviceCheckResult.newDevice;
       }
@@ -203,32 +205,51 @@ class AuthViewModel extends ChangeNotifier {
       final registeredDeviceId = data['registeredDeviceId'] ?? '';
       final deviceStatus = data['deviceStatus'] ?? 'active';
 
-      debugPrint('Registered: $registeredDeviceId');
-      debugPrint('Current:    $currentDeviceId');
-      debugPrint('Status:     $deviceStatus');
+      debugPrint('📋 Registered: $registeredDeviceId');
+      debugPrint('📋 Current:    $currentDeviceId');
+      debugPrint('📋 Status:     $deviceStatus');
 
+      // ✅ Admin ne reset kiya
       if (deviceStatus == 'reset_pending') {
-        debugPrint('Reset pending -re-register');
+        debugPrint('Reset pending — re-register');
         await _registerDevice(userId, currentDeviceId);
         return DeviceCheckResult.resetPending;
       }
 
+      // ✅ Koi device registered nahi
       if (registeredDeviceId.isEmpty) {
-        debugPrint('No device -first register');
+        debugPrint('📱 No device registered — register');
         await _registerDevice(userId, currentDeviceId);
         return DeviceCheckResult.newDevice;
       }
 
+      // ✅ Same device
       if (registeredDeviceId == currentDeviceId) {
-        debugPrint('Same device -allowed');
+        debugPrint('Same device — allowed');
         await _updateSession(userId);
         return DeviceCheckResult.allowed;
       }
 
-      debugPrint('Different device -blocked');
+      // ❌ Different device
+      // ✅ Extra check — fallback UUID match karo
+      // Kuch devices mein fingerprint badal jata hai
+      // app reinstall pe
+      final prefs = await SharedPreferences.getInstance();
+      final savedDeviceId = prefs.getString('deviceId') ?? '';
+
+      if (savedDeviceId == registeredDeviceId) {
+        // ✅ SharedPrefs match — same device hai
+        // Fingerprint change hua hoga
+        debugPrint('SharedPrefs match — updating fingerprint');
+        await _registerDevice(userId, currentDeviceId);
+        return DeviceCheckResult.allowed;
+      }
+
+      debugPrint('Different device — blocked');
       return DeviceCheckResult.blockedDifferentDevice;
     } catch (e) {
       debugPrint('Device check error: $e');
+      // ✅ Error pe block mat karo — UX ke liye
       return DeviceCheckResult.allowed;
     }
   }

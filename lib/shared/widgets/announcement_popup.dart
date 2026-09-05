@@ -1,5 +1,3 @@
-// lib/shared/widgets/announcement_popup.dart
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,19 +6,42 @@ import '../../services/announcement_service.dart';
 class AnnouncementPopup {
   static Future<void> showIfNeeded(BuildContext context) async {
     try {
-      final model = await AnnouncementService.getActive();
-      if (model == null) return;
+      debugPrint('🔔 AnnouncementPopup: showIfNeeded called');
 
-      // ✅ Sirf ek baar per day
+      final model = await AnnouncementService.getActive();
+
+      debugPrint('🔔 Model returned: ${model != null ? "YES" : "NULL"}');
+
+      if (model == null) {
+        debugPrint('❌ Model is null — not showing');
+        return;
+      }
+
+      // ✅ SharedPrefs check
       final prefs = await SharedPreferences.getInstance();
       final key = 'ann_${model.imageUrl.hashCode}';
       final lastShown = prefs.getString(key) ?? '';
       final today = DateTime.now().toIso8601String().substring(0, 10);
 
-      if (lastShown == today) return;
+      debugPrint('🔔 Key: $key');
+      debugPrint('🔔 Last shown: $lastShown');
+      debugPrint('🔔 Today: $today');
+
+      // ✅ TEMPORARILY remove cache check
+      // Har baar show karo debug ke liye
+      // if (lastShown == today) {
+      //   debugPrint('❌ Already shown today');
+      //   return;
+      // }
+
       await prefs.setString(key, today);
 
-      if (!context.mounted) return;
+      debugPrint('✅ Showing popup now!');
+
+      if (!context.mounted) {
+        debugPrint('❌ Context not mounted!');
+        return;
+      }
 
       showGeneralDialog(
         context: context,
@@ -42,7 +63,9 @@ class AnnouncementPopup {
         },
         pageBuilder: (ctx, _, __) => _ImagePopup(model: model),
       );
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('❌ AnnouncementPopup ERROR: $e');
+    }
   }
 }
 
@@ -52,22 +75,19 @@ class _ImagePopup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('🖼️ Building popup widget');
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 28),
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            // ── Image ───────────────────────
             Material(
               color: Colors.transparent,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
                 child: CachedNetworkImage(
                   imageUrl: model.imageUrl,
-                  // ✅ 3:4 ratio — admin image
-                  // jo bhi size upload kare
-                  // fit ho jayegi
                   fit: BoxFit.contain,
                   width: MediaQuery.of(context).size.width - 56,
                   placeholder: (_, __) => AspectRatio(
@@ -82,12 +102,27 @@ class _ImagePopup extends StatelessWidget {
                       ),
                     ),
                   ),
-                  errorWidget: (_, __, ___) => const SizedBox.shrink(),
+                  errorWidget: (_, __, ___) {
+                    debugPrint('❌ Image load failed!');
+                    return AspectRatio(
+                      aspectRatio: 3 / 4,
+                      child: Container(
+                        color: Colors.grey.shade200,
+                        child: const Center(
+                          child: Icon(
+                            Icons.broken_image,
+                            size: 48,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
 
-            // ── Close Button — Top Right ─────
+            // Close button
             Positioned(
               top: -12,
               right: -12,

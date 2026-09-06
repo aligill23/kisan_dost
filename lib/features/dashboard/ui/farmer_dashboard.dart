@@ -705,7 +705,12 @@ class _QuickActionCard extends StatelessWidget {
           ),
         ],
       ),
-      child: disabled ? Opacity(opacity: 0.5, child: content) : content,
+      child: disabled
+          ? Opacity(
+              opacity: 0.5,
+              child: content,
+            )
+          : content,
     );
 
     if (disabled) {
@@ -1219,6 +1224,8 @@ class _QuickActionGridCard extends StatelessWidget {
     );
 
     final card = Container(
+      width: double.infinity,
+      height: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -1230,14 +1237,22 @@ class _QuickActionGridCard extends StatelessWidget {
           ),
         ],
       ),
-      child: disabled ? Opacity(opacity: 0.5, child: content) : content,
+      child: disabled
+          ? Opacity(
+              opacity: 0.5,
+              child: content,
+            )
+          : content,
     );
 
     if (disabled) {
       return Stack(
+        fit: StackFit.expand,
         clipBehavior: Clip.none,
         children: [
-          IgnorePointer(child: card),
+          IgnorePointer(
+            child: card,
+          ),
           Positioned(
             top: 4,
             right: 4,

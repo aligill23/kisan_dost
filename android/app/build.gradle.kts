@@ -19,27 +19,32 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.kisandost.kisan_dost"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.kisandost.kisan_dost"
-        minSdk = 23
-        targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.1"
+        applicationId =
+            "com.kisandost.kisan_dost"
+        minSdk = flutter.minSdkVersion
+        targetSdk = 36
+        versionCode = 1
+        versionName = "1.0.0"
         multiDexEnabled = true
     }
 
     signingConfigs {
         create("release") {
-            keyAlias = keystoreProperties["keyAlias"]
-                as String
-            keyPassword = keystoreProperties["keyPassword"]
-                as String
-            storeFile = keystoreProperties["storeFile"]
-                ?.let { file(it as String) }
-            storePassword = keystoreProperties["storePassword"]
-                as String
+            keyAlias =
+                keystoreProperties["keyAlias"]
+                    as String
+            keyPassword =
+                keystoreProperties["keyPassword"]
+                    as String
+            storeFile =
+                keystoreProperties["storeFile"]
+                    ?.let { file(it as String) }
+            storePassword =
+                keystoreProperties["storePassword"]
+                    as String
         }
     }
 
@@ -49,31 +54,31 @@ android {
                 signingConfigs.getByName("release")
             isMinifyEnabled = false
             isShrinkResources = false
-            proguardFiles(
-                getDefaultProguardFile(
-                    "proguard-android-optimize.txt"
-                ),
-                "proguard-rules.pro"
-            )
-        }
-        debug {
-            signingConfig =
-                signingConfigs.getByName("debug")
         }
     }
 
     compileOptions {
-        sourceCompatibility =
-            JavaVersion.VERSION_11
-        targetCompatibility =
-            JavaVersion.VERSION_11
-    }
+    isCoreLibraryDesugaringEnabled = true
+    sourceCompatibility =
+        JavaVersion.VERSION_17  // ← 11 se 17
+    targetCompatibility =
+        JavaVersion.VERSION_17  // ← 11 se 17
+}
 
-    kotlinOptions {
-        jvmTarget = "11"
+kotlin {
+    compilerOptions {
+        jvmTarget.set(
+            org.jetbrains.kotlin.gradle
+                .dsl.JvmTarget.JVM_17  // ← 11 se 17
+        )
     }
 }
 
 flutter {
     source = "../.."
 }
+dependencies {
+    coreLibraryDesugaring(
+        "com.android.tools:desugar_jdk_libs:2.1.4"
+    )
+}}

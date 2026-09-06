@@ -1,167 +1,258 @@
 // lib/services/device_service.dart
-// Poora replace karo:
 
-import 'dart:io';
 import 'dart:convert';
+import 'dart:io';
+
+import 'package:android_id/android_id.dart';
 import 'package:crypto/crypto.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 class DeviceService {
   static final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
 
-  // ── Fingerprint — Multiple fallbacks ──────────
+  static const AndroidId _androidId = AndroidId();
+
+  static const String _persistentIdKey = 'device_persistent_id';
+
+  // ─────────────────────────────────────────────
+  // MAIN DEVICE ID
+  // ─────────────────────────────────────────────
+  //
+  // Android:
+  //   ANDROID_ID → SHA256
+  //
+  // iOS:
+  //   identifierForVendor → SHA256
+  //
+  // Fallback:
+  //   locally persistent UUID → SHA256
+  //
+  // Firestore mein raw identifier save nahi hota.
+  // ─────────────────────────────────────────────
+
   static Future<String> getDeviceFingerprint() async {
     try {
       if (Platform.isAndroid) {
         return await _androidFingerprint();
-      } else if (Platform.isIOS) {
+      }
+
+      if (Platform.isIOS) {
         return await _iosFingerprint();
       }
+
       return await _fallbackFingerprint();
     } catch (e) {
-      debugPrint('Fingerprint error: $e');
+      debugPrint(
+        'Device fingerprint error: $e',
+      );
+
       return await _fallbackFingerprint();
     }
   }
 
-  // ── Android — Multiple IDs combine karo ───────
+  // ─────────────────────────────────────────────
+  // ANDROID
+  // ─────────────────────────────────────────────
+
   static Future<String> _androidFingerprint() async {
     try {
-      final info = await _deviceInfo.androidInfo;
+      final androidId = await _androidId.getId();
 
-      // Collect all available IDs
-      final parts = <String>[];
-
-      // Android ID — most reliable
-      if (info.id.isNotEmpty) {
-        parts.add('id:${info.id}');
+      if (androidId != null && androidId.trim().isNotEmpty) {
+        // Prefix prevents accidental collision with
+        // identifiers from another platform/source.
+        return _hash(
+          'android:${androidId.trim()}',
+        );
       }
 
-      // Hardware fingerprint
-      if (info.fingerprint.isNotEmpty && info.fingerprint != 'unknown') {
-        parts.add('fp:${info.fingerprint}');
-      }
+      debugPrint(
+        'ANDROID_ID unavailable. '
+        'Using local fallback.',
+      );
 
-      // Brand + Model
-      if (info.brand.isNotEmpty) {
-        parts.add('brand:${info.brand}');
-      }
-      if (info.model.isNotEmpty) {
-        parts.add('model:${info.model}');
-      }
-
-      // Board
-      if (info.board.isNotEmpty && info.board != 'unknown') {
-        parts.add('board:${info.board}');
-      }
-
-      // Hardware
-      if (info.hardware.isNotEmpty && info.hardware != 'unknown') {
-        parts.add('hw:${info.hardware}');
-      }
-
-      // Display
-      if (info.display.isNotEmpty) {
-        parts.add('disp:${info.display}');
-      }
-
-      debugPrint('📱 Android parts: ${parts.length}');
-
-      // ✅ Agar kaafi parts hain
-      if (parts.length >= 2) {
-        final raw = parts.join('|');
-        return _hash(raw);
-      }
-
-      // ✅ Fallback — saved UUID
       return await _fallbackFingerprint();
     } catch (e) {
-      debugPrint('Android fingerprint error: $e');
+      debugPrint(
+        'ANDROID_ID error: $e',
+      );
+
       return await _fallbackFingerprint();
     }
   }
 
-  // ── iOS ───────────────────────────────────────
+  // ─────────────────────────────────────────────
+  // iOS
+  // ─────────────────────────────────────────────
+
   static Future<String> _iosFingerprint() async {
     try {
       final info = await _deviceInfo.iosInfo;
 
       final vendorId = info.identifierForVendor ?? '';
 
-      if (vendorId.isNotEmpty) {
-        final raw = '$vendorId|${info.model}|${info.systemName}';
-        return _hash(raw);
+      if (vendorId.trim().isNotEmpty) {
+        return _hash(
+          'ios:${vendorId.trim()}',
+        );
       }
+
+      debugPrint(
+        'iOS vendor identifier unavailable. '
+        'Using local fallback.',
+      );
 
       return await _fallbackFingerprint();
     } catch (e) {
-      debugPrint('iOS fingerprint error: $e');
+      debugPrint(
+        'iOS device ID error: $e',
+      );
+
       return await _fallbackFingerprint();
     }
   }
 
-  // ── Fallback — Persistent UUID ────────────────
-  // Agar hardware IDs nahi milte
-  // UUID generate karo aur save karo
-  // Yeh same phone pe hamesha same rahega
+  // ─────────────────────────────────────────────
+  // FALLBACK INSTALL ID
+  // ─────────────────────────────────────────────
+  //
+  // Used only if platform identifier cannot
+  // be obtained.
+  //
+  // Raw UUID remains in SharedPreferences.
+  // Security system receives its hash.
+  // ─────────────────────────────────────────────
+
   static Future<String> _fallbackFingerprint() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      const key = 'device_persistent_id';
 
-      // Check if already saved
-      final saved = prefs.getString(key);
-      if (saved != null && saved.isNotEmpty) {
-        debugPrint('📱 Using saved device ID: $saved');
-        return saved;
+      String? persistentId = prefs.getString(
+        _persistentIdKey,
+      );
+
+      if (persistentId == null || persistentId.trim().isEmpty) {
+        persistentId = const Uuid().v4();
+
+        final saved = await prefs.setString(
+          _persistentIdKey,
+          persistentId,
+        );
+
+        if (!saved) {
+          debugPrint(
+            'Unable to save fallback device ID.',
+          );
+
+          // Fail closed.
+          return '';
+        }
       }
 
-      // Generate new UUID for this device
-      final newId = const Uuid().v4();
-      await prefs.setString(key, newId);
-
-      debugPrint('📱 Generated new device ID: $newId');
-      return _hash(newId);
+      return _hash(
+        'fallback:${persistentId.trim()}',
+      );
     } catch (e) {
-      // Last resort
-      return _hash(DateTime.now().millisecondsSinceEpoch.toString());
+      debugPrint(
+        'Fallback device ID error: $e',
+      );
+
+      // Never generate a temporary/random ID here.
+      // AuthViewModel will return securityError.
+      return '';
     }
   }
 
-  // ── Device Name ───────────────────────────────
+  // ─────────────────────────────────────────────
+  // DEVICE DISPLAY NAME
+  // ─────────────────────────────────────────────
+
   static Future<String> getDeviceName() async {
     try {
       if (Platform.isAndroid) {
         final info = await _deviceInfo.androidInfo;
-        final brand = info.brand.isNotEmpty ? info.brand : 'Android';
-        final model = info.model.isNotEmpty ? info.model : 'Device';
+
+        final brand = info.brand.trim().isNotEmpty && info.brand != 'unknown'
+            ? info.brand.trim()
+            : 'Android';
+
+        final model = info.model.trim().isNotEmpty && info.model != 'unknown'
+            ? info.model.trim()
+            : 'Device';
+
         return '$brand $model';
-      } else if (Platform.isIOS) {
-        final info = await _deviceInfo.iosInfo;
-        return info.name.isNotEmpty ? info.name : 'iPhone';
       }
+
+      if (Platform.isIOS) {
+        final info = await _deviceInfo.iosInfo;
+
+        final name = info.name.trim();
+
+        return name.isNotEmpty ? name : 'iPhone';
+      }
+
       return 'Unknown Device';
-    } catch (_) {
+    } catch (e) {
+      debugPrint(
+        'Device name error: $e',
+      );
+
       return 'Unknown Device';
     }
   }
 
+  // ─────────────────────────────────────────────
+  // PLATFORM
+  // ─────────────────────────────────────────────
+
   static String getPlatform() {
-    if (Platform.isAndroid) return 'Android';
-    if (Platform.isIOS) return 'iOS';
+    if (Platform.isAndroid) {
+      return 'Android';
+    }
+
+    if (Platform.isIOS) {
+      return 'iOS';
+    }
+
     return 'Unknown';
   }
 
-  static String generateSessionId() => const Uuid().v4();
+  // ─────────────────────────────────────────────
+  // SESSION
+  // ─────────────────────────────────────────────
 
-  static String _hash(String input) {
-    if (input.isEmpty) {
-      return const Uuid().v4();
+  static String generateSessionId() {
+    return const Uuid().v4();
+  }
+
+  // ─────────────────────────────────────────────
+  // PUBLIC HASH METHOD
+  //
+  // Keep for compatibility with other files.
+  // ─────────────────────────────────────────────
+
+  static String hashString(
+    String input,
+  ) {
+    if (input.trim().isEmpty) {
+      return '';
     }
+
+    return _hash(input.trim());
+  }
+
+  // ─────────────────────────────────────────────
+  // SHA-256
+  // ─────────────────────────────────────────────
+
+  static String _hash(
+    String input,
+  ) {
     final bytes = utf8.encode(input);
+
     return sha256.convert(bytes).toString();
   }
 }

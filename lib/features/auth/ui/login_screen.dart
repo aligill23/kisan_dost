@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../viewmodels/auth_viewmodel.dart';
 import '../ui/device_blocked_screen.dart';
+import 'secure_pin_screen.dart';
+import 'legacy_recovery_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -41,8 +43,22 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // BUSINESS LOGIC — UNCHANGED
+  // SECURE AUTHENTICATION LOGIC
   // ─────────────────────────────────────────────────────────────
+  void _showError(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          textDirection: TextDirection.rtl,
+        ),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
 
   Future<void> _continue() async {
     if (!_formKey.currentState!.validate()) return;
@@ -55,84 +71,42 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
 
     switch (result) {
-      // ── Existing user — device check karo ────────
-      case LoginResult.existingUser:
-        final userId = authVM.userId ?? '';
-
-        if (userId.isEmpty) {
-          context.go('/dashboard');
-          break;
-        }
-
-        // Warning dialog sirf existing user ke liye
-        final confirmed = await _showDeviceWarningDialog();
-        if (!confirmed) return;
-        if (!mounted) return;
-
-        final deviceResult = await authVM.checkDeviceSecurity(userId);
-        if (!mounted) return;
-
-        if (deviceResult == DeviceCheckResult.blockedDifferentDevice) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const DeviceBlockedScreen(),
+      // ─────────────────────────────────────────────
+      // EXISTING MIGRATED USER — PIN REQUIRED
+      // ─────────────────────────────────────────────
+      case LoginResult.pinRequired:
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const SecurePinScreen(
+              mode: SecurePinMode.verifyExisting,
             ),
-          );
-          return;
-        }
-        context.go('/dashboard');
-        break;
+          ),
+        );
+        return;
 
-      // ── Existing dealer/arhti — device check ─────
-      case LoginResult.noBusinessProfile:
-        final userId = authVM.userId ?? '';
+      // ─────────────────────────────────────────────
+      // EXISTING LEGACY USER — ADMIN RECOVERY REQUIRED
+      // ─────────────────────────────────────────────
+      case LoginResult.legacyRecoveryRequired:
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const LegacyRecoveryScreen(),
+          ),
+        );
+        return;
 
-        if (userId.isEmpty) {
-          context.go('/business-setup');
-          break;
-        }
-
-        final confirmed = await _showDeviceWarningDialog();
-        if (!confirmed) return;
-        if (!mounted) return;
-
-        final deviceResult = await authVM.checkDeviceSecurity(userId);
-        if (!mounted) return;
-
-        if (deviceResult == DeviceCheckResult.blockedDifferentDevice) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const DeviceBlockedScreen(),
-            ),
-          );
-          return;
-        }
-        context.go('/business-setup');
-        break;
-
-      // ── New user — NO device check ────────────────
-      // Seedha aage — device register hoga baad mein
+      // ─────────────────────────────────────────────
+      // COMPLETELY NEW USER
+      // ─────────────────────────────────────────────
       case LoginResult.newUser:
         context.go('/role-selection');
-        break;
+        return;
 
-      // ── Profile incomplete — NO device check ──────
-      case LoginResult.noRole:
-        context.go('/role-selection');
-        break;
-
-      case LoginResult.noProfile:
-        context.go('/profile-setup');
-        break;
-
-      // ── Admin ──────────────────────────────────────
-      case LoginResult.admin:
-        context.go('/dashboard');
-        break;
-
-      // ── Device blocked ─────────────────────────────
+      // ─────────────────────────────────────────────
+      // THIS DEVICE ALREADY BELONGS TO ANOTHER ACCOUNT
+      // ─────────────────────────────────────────────
       case LoginResult.deviceAlreadyRegistered:
         Navigator.push(
           context,
@@ -140,27 +114,39 @@ class _LoginScreenState extends State<LoginScreen> {
             builder: (_) => const DeviceBlockedScreen(),
           ),
         );
-        break;
+        return;
 
-      // ── Error ──────────────────────────────────────
+      // ─────────────────────────────────────────────
+      // ADMIN — CURRENT ADMIN FLOW PRESERVED
+      // ─────────────────────────────────────────────
+      case LoginResult.admin:
+        context.go('/dashboard');
+        return;
+
+      // ─────────────────────────────────────────────
+      // ERROR
+      // ─────────────────────────────────────────────
       case LoginResult.error:
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              authVM.errorMessage ?? 'خرابی ہوئی',
-              textDirection: TextDirection.rtl,
-            ),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
+        _showError(
+          authVM.errorMessage ??
+              'Login could not be completed. Please try again.',
         );
-        break;
+        return;
 
-      default:
-        break;
+      // ─────────────────────────────────────────────
+      // LEGACY COMPATIBILITY VALUES
+      //
+      // New backend auth flow should NOT return these
+      // directly after entering only a phone number.
+      // ─────────────────────────────────────────────
+      case LoginResult.existingUser:
+      case LoginResult.noRole:
+      case LoginResult.noProfile:
+      case LoginResult.noBusinessProfile:
+        _showError(
+          'Account authentication state is outdated. Please try again.',
+        );
+        return;
     }
   }
   // ─────────────────────────────────────────────────────────────
@@ -222,7 +208,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 12),
               const Text(
-                'یہ اکاؤنٹ اسی موبائل اور سم سے منسلک ہو جائے گا جو اس وقت استعمال ہو رہی ہے۔\n\nایک موبائل پر ہمیشہ صرف ایک اکاؤنٹ بن سکے گا۔ کیا آپ جاری رکھنا چاہتے ہیں؟',
+                'یہ اکاؤنٹ اس موبائل ڈیوائس سے منسلک ہو جائے گا۔\n\nایک موبائل پر صرف ایک اکاؤنٹ استعمال کیا جا سکے گا۔\n\nکیا آپ جاری رکھنا چاہتے ہیں؟',
                 style: TextStyle(
                   fontFamily: 'Nastaleeq',
                   fontSize: 17,

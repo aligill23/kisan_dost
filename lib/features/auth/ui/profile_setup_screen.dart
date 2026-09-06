@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../ui/device_blocked_screen.dart';
+import '../ui/secure_pin_screen.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
   const ProfileSetupScreen({super.key});
@@ -111,120 +112,239 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+
     if (_province.isEmpty || _district.isEmpty || _tehsil.isEmpty) {
-      _showError('براہ کرم مکمل لوکیشن منتخب کریں');
+      _showError(
+        'براہ کرم مکمل لوکیشن منتخب کریں',
+      );
       return;
     }
 
-    final role = context.read<AuthViewModel>().userRole ?? 'farmer';
-    final vm = context.read<ProfileViewModel>();
     final authVM = context.read<AuthViewModel>();
 
-    //  NAYA -is device pe pehle se koi doosra account to nahi
-    final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
-    final existingUserId = await authVM.findAccountUsingThisDevice();
-    if (existingUserId != null && existingUserId != currentUid) {
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const DeviceBlockedScreen()),
+    final vm = context.read<ProfileViewModel>();
+
+    final role = authVM.userRole ?? 'farmer';
+
+    try {
+      // ─────────────────────────────────────────
+      // 1. ENSURE WE HAVE A FIREBASE UID
+      // ─────────────────────────────────────────
+
+      var authUser = FirebaseAuth.instance.currentUser;
+
+      if (authUser == null) {
+        final credential = await FirebaseAuth.instance.signInAnonymously();
+
+        authUser = credential.user;
+      }
+
+      if (authUser == null) {
+        throw Exception(
+          'Unable to create user account.',
         );
       }
-      return;
-    }
 
-    // ── Referral validation ───────────────────────
-    final code = _referralController.text.trim();
-    if (code.isNotEmpty) {
-      _showLoadingDialog('ریفرل کوڈ چیک ہو رہا ہے...');
+      final userId = authUser.uid;
 
-      final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      // ─────────────────────────────────────────
+      // 2. SECURE REGISTRATION PREFLIGHT
+      //
+      // IMPORTANT:
+      // Flutter no longer writes device-security
+      // fields directly to Firestore.
+      //
+      // This is only a server-side preflight.
+      // Final device binding happens atomically in
+      // completeNewRegistration() after the PIN is
+      // created.
+      // ─────────────────────────────────────────
 
-      final isValid = await vm.validateReferralCode(
-        userId: uid,
-        code: code,
-      );
+      final preflight = await authVM.preflightNewRegistration();
 
-      if (mounted) Navigator.pop(context);
-
-      if (!isValid) {
-        if (!mounted) return;
-        _showError(vm.referralError ?? 'غلط ریفرل کوڈ');
-        return;
-      }
-
-      if (mounted) {
-        _showSuccessDialog(vm.validatedAmbassadorName ?? '');
-        await Future.delayed(const Duration(seconds: 2));
-        if (mounted) Navigator.pop(context);
-      }
-    }
-
-    // ── Profile Image Upload ──────────────────────
-    //  YE MISSING THA -Ab add ho gaya
-    String profileImageUrl = '';
-    if (_profileImage != null) {
-      _showLoadingDialog('تصویر اپلوڈ ہو رہی ہے...');
-
-      final imageUrl = await vm.uploadProfileImageAndGetUrl(
-        _profileImage!,
-      );
-
-      if (mounted) Navigator.pop(context);
-
-      if (imageUrl != null) {
-        profileImageUrl = imageUrl;
-      }
-    }
-
-    // ── Build data map ────────────────────────────
-    final Map<String, dynamic> data = {
-      'name': _nameController.text.trim(),
-      'role': role,
-      'province': _province,
-      'district': _district,
-      'tehsil': _tehsil,
-      'notes': _notesController.text.trim(),
-      //  Profile image URL add karo
-      if (profileImageUrl.isNotEmpty) 'profileImage': profileImageUrl,
-    };
-
-    if (role == 'farmer') {
-      data['village'] = _villageController.text.trim();
-      data['farmName'] = _businessNameController.text.trim();
-    } else if (role == 'arhti') {
-      data['shopName'] = _businessNameController.text.trim();
-      data['marketAddress'] = _addressController.text.trim();
-    } else if (role == 'dealer') {
-      data['businessName'] = _businessNameController.text.trim();
-      data['shopAddress'] = _addressController.text.trim();
-    }
-
-    final success = await vm.saveProfile(data);
-    if (!mounted) return;
-
-    if (success) {
-      //  NAYA -profile save hote hi device register/check karein
-      final authVM = context.read<AuthViewModel>();
-      final userId = authVM.userId ?? '';
-      final deviceResult = await authVM.checkDeviceSecurity(userId);
       if (!mounted) return;
 
-      if (deviceResult == DeviceCheckResult.blockedDifferentDevice) {
-        // Is device pe pehle se koi account hai -block karo, profile-success mat dikhao
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const DeviceBlockedScreen()),
+      switch (preflight) {
+        case DeviceCheckResult.allowed:
+          // Safe to continue profile creation.
+          break;
+
+        case DeviceCheckResult.blockedDifferentDevice:
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const DeviceBlockedScreen(),
+            ),
+          );
+          return;
+
+        case DeviceCheckResult.reauthRequired:
+          _showError(
+            'یہ فون نمبر یا اکاؤنٹ اس دوران تبدیل ہو گیا ہے۔ '
+            'براہ کرم دوبارہ لاگ ان کریں۔',
+          );
+          return;
+
+        case DeviceCheckResult.securityError:
+        case DeviceCheckResult.newDevice:
+        case DeviceCheckResult.resetPending:
+          _showError(
+            'سیکیورٹی تصدیق مکمل نہیں ہو سکی۔ '
+            'انٹرنیٹ چیک کریں اور دوبارہ کوشش کریں۔',
+          );
+          return;
+      }
+
+      // ─────────────────────────────────────────
+      // 3. REFERRAL VALIDATION
+      // ─────────────────────────────────────────
+
+      // ─────────────────────────────────────────
+
+      final code = _referralController.text.trim();
+
+      if (code.isNotEmpty) {
+        _showLoadingDialog(
+          'ریفرل کوڈ چیک ہو رہا ہے...',
         );
+
+        final isValid = await vm.validateReferralCode(
+          userId: userId,
+          code: code,
+        );
+
+        if (mounted) {
+          Navigator.pop(context);
+        }
+
+        if (!isValid) {
+          if (!mounted) return;
+
+          _showError(
+            vm.referralError ?? 'غلط ریفرل کوڈ',
+          );
+
+          return;
+        }
+
+        if (mounted) {
+          _showSuccessDialog(
+            vm.validatedAmbassadorName ?? '',
+          );
+
+          await Future.delayed(
+            const Duration(seconds: 2),
+          );
+
+          if (mounted) {
+            Navigator.pop(context);
+          }
+        }
+      }
+
+      // ─────────────────────────────────────────
+      // 5. PROFILE IMAGE UPLOAD
+      // ─────────────────────────────────────────
+
+      String profileImageUrl = '';
+
+      if (_profileImage != null) {
+        _showLoadingDialog(
+          'تصویر اپلوڈ ہو رہی ہے...',
+        );
+
+        final imageUrl = await vm.uploadProfileImageAndGetUrl(
+          _profileImage!,
+        );
+
+        if (mounted) {
+          Navigator.pop(context);
+        }
+
+        if (imageUrl != null) {
+          profileImageUrl = imageUrl;
+        }
+      }
+
+      if (!mounted) return;
+
+      // ─────────────────────────────────────────
+      // 6. BUILD PROFILE DATA
+      // ─────────────────────────────────────────
+
+      final Map<String, dynamic> data = {
+        'name': _nameController.text.trim(),
+        'role': role,
+        'province': _province,
+        'district': _district,
+        'tehsil': _tehsil,
+        'notes': _notesController.text.trim(),
+        if (profileImageUrl.isNotEmpty) 'profileImage': profileImageUrl,
+      };
+
+      if (role == 'farmer') {
+        data['village'] = _villageController.text.trim();
+
+        data['farmName'] = _businessNameController.text.trim();
+      } else if (role == 'arhti') {
+        data['shopName'] = _businessNameController.text.trim();
+
+        data['marketAddress'] = _addressController.text.trim();
+      } else if (role == 'dealer') {
+        data['businessName'] = _businessNameController.text.trim();
+
+        data['shopAddress'] = _addressController.text.trim();
+      }
+
+      // ─────────────────────────────────────────
+      // 7. SAVE PROFILE
+      // ─────────────────────────────────────────
+
+      final success = await vm.saveProfile(data);
+
+      if (!mounted) return;
+
+      if (!success) {
+        _showError(
+          vm.errorMessage ?? 'خرابی ہوئی',
+        );
+
         return;
       }
+
+      // ─────────────────────────────────────────
+      // 8. CREATE SECURITY PIN
+      //
+      // DO NOT mark the user logged in yet.
+      //
+      // SecurePinScreen will:
+      // 1. ask for a 6-digit PIN
+      // 2. call backend complete-registration
+      // 3. bind this device server-side
+      // 4. receive a Firebase Custom Token
+      // 5. sign in with the SAME permanent UID
+      // 6. only then save logged-in state
+      // ─────────────────────────────────────────
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const ProfileSuccessScreen()),
+        MaterialPageRoute(
+          builder: (_) => const SecurePinScreen(
+            mode: SecurePinMode.createNew,
+            showProfileSuccessAfterCreate: true,
+          ),
+        ),
       );
-    } else {
-      _showError(vm.errorMessage ?? 'خرابی ہوئی');
+    } catch (e) {
+      debugPrint(
+        'Profile setup error: $e',
+      );
+
+      if (!mounted) return;
+
+      _showError(
+        'کچھ غلط ہو گیا۔ دوبارہ کوشش کریں۔',
+      );
     }
   }
 

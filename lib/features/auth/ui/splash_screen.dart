@@ -90,12 +90,48 @@ class _SplashScreenState extends State<SplashScreen>
       return;
     }
 
-    // Device security check
+    // ─────────────────────────────────────────────
+    // SECURE BACKEND DEVICE VERIFICATION
+    // ─────────────────────────────────────────────
     final authVM = context.read<AuthViewModel>();
-    final deviceResult = await authVM.checkDeviceSecurity(userId);
 
-    if (!mounted) return;
+    DeviceCheckResult deviceResult;
 
+    while (true) {
+      deviceResult = await authVM.checkDeviceSecurity(userId);
+
+      if (!mounted) return;
+
+      // Genuine network / backend verification error:
+      // fail closed and let the user retry.
+      if (deviceResult == DeviceCheckResult.securityError) {
+        await _showDeviceSecurityErrorDialog();
+
+        if (!mounted) return;
+
+        // Retry button closes the dialog and the loop verifies again.
+        continue;
+      }
+
+      break;
+    }
+
+    // Old anonymous Firebase session, missing Firebase session,
+    // or permanent Firestore UID != Firebase Auth UID.
+    //
+    // Do NOT keep showing "check internet" for this case.
+    // Clear only the authenticated account session and send the
+    // user through phone + PIN / legacy recovery.
+    if (deviceResult == DeviceCheckResult.reauthRequired) {
+      await authVM.requireReauthentication();
+
+      if (!mounted) return;
+
+      context.go('/login');
+      return;
+    }
+
+    // Different physical device / device belongs elsewhere.
     if (deviceResult == DeviceCheckResult.blockedDifferentDevice) {
       Navigator.pushReplacement(
         context,
@@ -103,6 +139,12 @@ class _SplashScreenState extends State<SplashScreen>
           builder: (_) => const DeviceBlockedScreen(),
         ),
       );
+      return;
+    }
+
+    // With the backend-based architecture, splash only continues
+    // when the authenticated session and registered device are allowed.
+    if (deviceResult != DeviceCheckResult.allowed) {
       return;
     }
 
@@ -142,45 +184,197 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
+  Future<void> _showDeviceSecurityErrorDialog() async {
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Column(
+            children: [
+              Icon(
+                Icons.security_outlined,
+                color: Color(0xFF2E7D32),
+                size: 42,
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Device Verification',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: const Text(
+            'We could not verify this device.\n\n'
+            'Please check your internet connection and try again.',
+            textAlign: TextAlign.center,
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('Try Again'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Color(0xFF2E7D32),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 14,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
   // ─────────────────────────────────────────────────────────────
   // Force Update Check — UNCHANGED
   // ─────────────────────────────────────────────────────────────
 
   Future<bool> _checkForceUpdate() async {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('site_settings')
-          .doc('app_config')
-          .get();
+    while (true) {
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('site_settings')
+            .doc('app_config')
+            .get();
 
-      if (!doc.exists) return true;
+        if (!doc.exists) {
+          throw Exception(
+            'App configuration not found.',
+          );
+        }
 
-      final data = doc.data()!;
+        final data = doc.data()!;
 
-      final minVersion = data['minRequiredVersion'] ?? '1.0.0';
+        final minVersion = (data['minRequiredVersion'] ?? '1.0.0').toString();
 
-      final message = data['forceUpdateMessage'] ??
-          'نیا اپڈیٹ دستیاب ہے، براہ کرم ایپ اپڈیٹ کریں';
+        final message = (data['forceUpdateMessage'] ??
+                'نیا اپڈیٹ دستیاب ہے، براہ کرم ایپ اپڈیٹ کریں')
+            .toString();
 
-      final packageInfo = await PackageInfo.fromPlatform();
+        final packageInfo = await PackageInfo.fromPlatform();
 
-      final currentVersion = packageInfo.version;
+        final currentVersion = packageInfo.version;
 
-      if (_isVersionLower(currentVersion, minVersion)) {
-        if (!mounted) return false;
+        if (_isVersionLower(
+          currentVersion,
+          minVersion,
+        )) {
+          if (!mounted) return false;
 
-        await _showForceUpdateDialog(message);
+          await _showForceUpdateDialog(
+            message,
+          );
 
-        return false;
+          return false;
+        }
+
+        return true;
+      } catch (e) {
+        debugPrint(
+          'Force update check error: $e',
+        );
+
+        if (!mounted) {
+          return false;
+        }
+
+        // SECURITY:
+        // Force-update check fail ho to
+        // app ko aage proceed nahi karne dena.
+        await _showUpdateCheckErrorDialog();
+
+        if (!mounted) {
+          return false;
+        }
+
+        // Retry button ke baad loop dobara
+        // Firebase version check karega.
       }
-
-      return true;
-    } catch (e) {
-      debugPrint('Force update check error: $e');
-
-      // If update check fails, allow the app to continue.
-      return true;
     }
+  }
+
+  Future<void> _showUpdateCheckErrorDialog() async {
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Column(
+            children: [
+              Icon(
+                Icons.system_update_outlined,
+                color: Color(0xFF2E7D32),
+                size: 42,
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Update Verification',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: const Text(
+            'App version verify نہیں ہو سکا۔\n\n'
+            'براہ کرم انٹرنیٹ کنکشن چیک کریں اور دوبارہ کوشش کریں۔',
+            textAlign: TextAlign.center,
+            textDirection: TextDirection.rtl,
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(
+                    dialogContext,
+                  ).pop();
+                },
+                icon: const Icon(
+                  Icons.refresh,
+                ),
+                label: const Text(
+                  'دوبارہ کوشش کریں',
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Color(0xFF2E7D32),
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(
+                    vertical: 14,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   bool _isVersionLower(String current, String required) {

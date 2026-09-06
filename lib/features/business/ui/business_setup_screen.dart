@@ -13,7 +13,7 @@ import '../../../features/auth/viewmodels/auth_viewmodel.dart';
 import '../../../shared/widgets/location_dropdown.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../features/auth/ui/device_blocked_screen.dart';
-import '../../../features/auth/ui/profile_success_screen.dart';
+import '../../../features/auth/ui/secure_pin_screen.dart';
 
 class BusinessSetupScreen extends StatefulWidget {
   const BusinessSetupScreen({super.key});
@@ -138,7 +138,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
 
     setState(() {
       _isLoading = true;
-      _loadingMessage = 'لوگو اپلوڈ ہو رہا ہے...';
+      _loadingMessage = 'ڈیوائس کی تصدیق ہو رہی ہے...';
     });
 
     try {
@@ -146,56 +146,129 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
       final phone = prefs.getString('phoneNumber') ?? '';
 
       var authUser = FirebaseAuth.instance.currentUser;
+
       if (authUser == null) {
         final cred = await FirebaseAuth.instance.signInAnonymously();
         authUser = cred.user;
       }
+
       final docId = authUser?.uid ?? '';
 
       if (docId.isEmpty) {
         throw Exception('Unable to resolve user identifier');
       }
 
-      //  Is device pe pehle se koi doosra account to nahi
       final authVM = context.read<AuthViewModel>();
-      final existingUserId = await authVM.findAccountUsingThisDevice();
-      if (existingUserId != null && existingUserId != docId) {
-        setState(() => _isLoading = false);
-        if (mounted) {
+
+      // ─────────────────────────────────────────────
+      // 1. SECURE REGISTRATION PREFLIGHT
+      //
+      // IMPORTANT:
+      // Flutter no longer writes device-security
+      // fields directly to Firestore.
+      //
+      // This preflight only checks whether signup
+      // may continue. Final account/device binding
+      // happens server-side after the user creates
+      // the 6-digit PIN.
+      // ─────────────────────────────────────────────
+
+      final preflight = await authVM.preflightNewRegistration();
+
+      if (!mounted) return;
+
+      switch (preflight) {
+        case DeviceCheckResult.allowed:
+          // Safe to continue business profile creation.
+          break;
+
+        case DeviceCheckResult.blockedDifferentDevice:
+          setState(() => _isLoading = false);
+
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => const DeviceBlockedScreen()),
+            MaterialPageRoute(
+              builder: (_) => const DeviceBlockedScreen(),
+            ),
           );
-        }
-        return;
+          return;
+
+        case DeviceCheckResult.reauthRequired:
+          setState(() => _isLoading = false);
+
+          _showError(
+            'یہ فون نمبر یا اکاؤنٹ اس دوران تبدیل ہو گیا ہے۔ '
+            'براہ کرم دوبارہ لاگ ان کریں۔',
+          );
+          return;
+
+        case DeviceCheckResult.securityError:
+        case DeviceCheckResult.newDevice:
+        case DeviceCheckResult.resetPending:
+          setState(() => _isLoading = false);
+
+          _showError(
+            'سیکیورٹی تصدیق مکمل نہیں ہو سکی۔ '
+            'انٹرنیٹ چیک کریں اور دوبارہ کوشش کریں۔',
+          );
+          return;
       }
 
-      // Upload logo
+      // ─────────────────────────────────────────────
+      // 2. UPLOAD LOGO
+      // ─────────────────────────────────────────────
+
+      // ─────────────────────────────────────────────
+
+      setState(() {
+        _loadingMessage = 'لوگو اپلوڈ ہو رہا ہے...';
+      });
+
       final logoUrl = await R2UploadService.uploadProfilePhoto(
         _logoFile!,
         onProgress: (p) {
-          setState(() => _logoProgress = p);
+          if (mounted) {
+            setState(() {
+              _logoProgress = p;
+            });
+          }
         },
       );
 
-      setState(() => _loadingMessage = 'بینر اپلوڈ ہو رہا ہے...');
+      // ─────────────────────────────────────────────
+      // 3. UPLOAD BANNER
+      // ─────────────────────────────────────────────
 
-      // Upload banner (optional)
+      setState(() {
+        _loadingMessage = 'بینر اپلوڈ ہو رہا ہے...';
+      });
+
       String bannerUrl = '';
+
       if (_bannerFile != null) {
         final url = await R2UploadService.uploadImage(
           file: _bannerFile!,
           folder: 'banners',
           onProgress: (p) {
-            setState(() => _bannerProgress = p);
+            if (mounted) {
+              setState(() {
+                _bannerProgress = p;
+              });
+            }
           },
         );
+
         bannerUrl = url ?? '';
       }
 
-      setState(() => _loadingMessage = 'معلومات محفوظ ہو رہی ہیں...');
+      // ─────────────────────────────────────────────
+      // 4. SAVE BUSINESS PROFILE
+      // ─────────────────────────────────────────────
 
-      // Save to Firestore
+      setState(() {
+        _loadingMessage = 'معلومات محفوظ ہو رہی ہیں...';
+      });
+
       await FirebaseFirestore.instance.collection('users').doc(docId).set({
         'phone': phone,
         'role': _role,
@@ -215,44 +288,56 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
         'yearsInBusiness': int.tryParse(_yearsController.text) ?? 0,
         'verified': false,
         'subscriptionStatus': 'inactive',
-        'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // Save session
-      await prefs.setString('userId', docId);
-      await prefs.setBool('isLoggedIn', true);
-      if (!mounted) return;
+      // ─────────────────────────────────────────────
+      // 5. SAVE NON-SENSITIVE LOCAL DISPLAY DATA
+      //
+      // Do NOT mark the account logged in yet.
+      // Backend registration + custom-token sign-in
+      // must succeed first.
+      // ─────────────────────────────────────────────
 
-      //  Device register/check karein
-      final deviceResult = await authVM.checkDeviceSecurity(docId);
-      if (!mounted) return;
-      if (deviceResult == DeviceCheckResult.blockedDifferentDevice) {
-        setState(() => _isLoading = false);
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const DeviceBlockedScreen()),
-        );
-        return;
-      }
-
-      final prefs2 = await SharedPreferences.getInstance();
-      await prefs2.setString(
+      await prefs.setString(
         'userName',
         _ownerNameController.text.trim(),
       );
 
       if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      // ─────────────────────────────────────────────
+      // 6. CREATE 6-DIGIT SECURITY PIN
+      //
+      // SecurePinScreen will:
+      // 1. collect + confirm PIN
+      // 2. call complete-registration backend API
+      // 3. bind this device server-side
+      // 4. receive Firebase Custom Token
+      // 5. sign in with the SAME permanent UID
+      // 6. only then mark local login state true
+      // ─────────────────────────────────────────────
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => const ProfileSuccessScreen(),
+          builder: (_) => const SecurePinScreen(
+            mode: SecurePinMode.createNew,
+            showProfileSuccessAfterCreate: true,
+          ),
         ),
       );
-
-      setState(() => _isLoading = false);
     } catch (e) {
-      setState(() => _isLoading = false);
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+
       _showError(e.toString());
     }
   }
